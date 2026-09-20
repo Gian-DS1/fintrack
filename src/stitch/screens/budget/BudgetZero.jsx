@@ -9,7 +9,6 @@ import { Stagger } from '../../StitchMotion';
 import { useI18n } from '../../../contexts/I18nContext';
 import EnvelopeRow from './EnvelopeRow';
 import useBudgetStore from '../../../stores/useBudgetStore';
-import { isDemoActive, demoSetBudget, demoCopyBudgetFromPreviousMonth } from '../../demoMode';
 import { sumAmounts, calculateBudgetProgress } from '../../../utils/calculations';
 import { formatCurrency } from '../../../utils/formatters';
 
@@ -36,7 +35,6 @@ const GROUP_OF = {
 export default function BudgetZero({ year, month, monthBudgets, monthTx, categories, summary, debtCategoryId }) {
   const { t } = useI18n();
   const { setBudget, copyBudgetFromPreviousMonth } = useBudgetStore();
-  const demo = isDemoActive();
 
   const rows = useMemo(
     () =>
@@ -102,12 +100,11 @@ export default function BudgetZero({ year, month, monthBudgets, monthTx, categor
 
   const handleSave = (cat, val) => {
     const num = Number(val) || 0;
-    if (demo) demoSetBudget(cat.id, year, month, num);
-    else setBudget(cat.id, year, month, num);
+    setBudget(cat.id, year, month, num);
   };
 
   const handleCopy = async () => {
-    const ok = demo ? demoCopyBudgetFromPreviousMonth(year, month) : await copyBudgetFromPreviousMonth(year, month);
+    const ok = await copyBudgetFromPreviousMonth(year, month);
     toast[ok ? 'success' : 'error'](ok ? t('pages.budgetCopy') : t('pages.noPreviousBudget'));
   };
 

@@ -13,6 +13,11 @@ import { advanceDate } from '../utils/recurrence';
 import useTransactionStore from './useTransactionStore';
 import { getCurrency } from '../utils/currencyRuntime';
 import { tr } from '../i18n/runtime';
+import { isDemoActive } from '../stitch/demoFlag';
+
+// Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
+const localId = () =>
+  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 // Re-export para que los consumidores que ya lo importan desde aquí sigan funcionando.
 export { advanceDate };
@@ -43,6 +48,7 @@ const useRecurringStore = create(
       loading: false,
 
       fetchRecurring: async () => {
+        if (isDemoActive()) return; // demo: los datos los siembra demoMode
         set({ loading: true });
         const user = await getCurrentUser();
         if (!user) return set({ recurring: [], loading: false });
@@ -62,11 +68,12 @@ const useRecurringStore = create(
       },
 
       addRecurring: async (t) => {
-        const user = await getCurrentUser();
-        if (!user) return;
+        const demo = isDemoActive();
+        const user = demo ? null : await getCurrentUser();
+        if (!demo && !user) return;
 
         const payload = {
-          user_id: user.id,
+          user_id: user?.id,
           category_id: t.categoryId || null,
           card_id: t.cardId || null,
           amount: Number(t.amount),
@@ -78,6 +85,13 @@ const useRecurringStore = create(
           next_date: t.nextDate,
           active: true,
         };
+
+        if (demo) {
+          set((state) => ({
+            recurring: [...state.recurring, mapFromDb({ ...payload, id: localId(), created_at: new Date().toISOString() })],
+          }));
+          return;
+        }
 
         const { data, error } = await supabase
           .from('recurring_transactions')
@@ -95,6 +109,12 @@ const useRecurringStore = create(
       toggleActive: async (id) => {
         const r = get().recurring.find((x) => x.id === id);
         if (!r) return;
+        if (isDemoActive()) {
+          set((state) => ({
+            recurring: state.recurring.map((x) => (x.id === id ? { ...x, active: !x.active } : x)),
+          }));
+          return;
+        }
         const { error } = await supabase
           .from('recurring_transactions')
           .update({ active: !r.active })
@@ -107,6 +127,10 @@ const useRecurringStore = create(
       },
 
       deleteRecurring: async (id) => {
+        if (isDemoActive()) {
+          set((state) => ({ recurring: state.recurring.filter((x) => x.id !== id) }));
+          return;
+        }
         const { error } = await supabase.from('recurring_transactions').delete().eq('id', id);
         if (!error) {
           set((state) => ({ recurring: state.recurring.filter((x) => x.id !== id) }));
@@ -160,8 +184,10 @@ const useRecurringStore = create(
 
         // Avanzar next_date de cada plantilla (en DB y en estado). Se avanza
         // siempre para no recrear duplicados en la próxima carga.
-        for (const a of advanced) {
-          await supabase.from('recurring_transactions').update({ next_date: a.nextDate }).eq('id', a.id);
+        if (!isDemoActive()) {
+          for (const a of advanced) {
+            await supabase.from('recurring_transactions').update({ next_date: a.nextDate }).eq('id', a.id);
+          }
         }
         set((state) => ({
           recurring: state.recurring.map((r) => {

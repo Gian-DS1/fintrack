@@ -3,6 +3,11 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { tr } from '../i18n/runtime';
+import { isDemoActive } from '../stitch/demoFlag';
+
+// Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
+const localId = () =>
+  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 const useBudgetStore = create(
   persist(
@@ -11,6 +16,7 @@ const useBudgetStore = create(
   loading: false,
 
   fetchBudgets: async () => {
+    if (isDemoActive()) return; // demo: los datos los siembra demoMode
     set({ loading: true });
     const user = await getCurrentUser();
     if (!user) return set({ budgets: [], loading: false });
@@ -65,6 +71,13 @@ const useBudgetStore = create(
         return { budgets: [...state.budgets, optimisticFormatted] };
       }
     });
+
+    // En demo la actualización optimista de arriba ES el resultado final: no
+    // hay backend que confirme ni fila que reconciliar.
+    if (isDemoActive()) {
+      toast.success(tr('stores.budgets.saved'));
+      return;
+    }
 
     try {
       const user = await getCurrentUser();
@@ -150,8 +163,9 @@ const useBudgetStore = create(
   // entries: [{ categoryId, amount }]. Devuelve cuántas categorías se aplicaron.
   bulkSetBudgets: async (year, month, entries) => {
     if (!entries || entries.length === 0) return 0;
-    const user = await getCurrentUser();
-    if (!user) return 0;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return 0;
 
     const dbMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
     const current = get().budgets;
@@ -166,22 +180,34 @@ const useBudgetStore = create(
       if (existing && !String(existing.id).startsWith('temp-')) {
         toUpdate.push({ id: existing.id, categoryId: e.categoryId, amount });
       } else {
-        toInsert.push({ user_id: user.id, category_id: e.categoryId, amount, month: dbMonth });
+        toInsert.push({ user_id: user?.id, category_id: e.categoryId, amount, month: dbMonth });
       }
     }
 
     try {
-      // Actualizaciones en paralelo.
-      await Promise.all(
-        toUpdate.map((u) => supabase.from('budgets').update({ amount: u.amount }).eq('id', u.id))
-      );
-
-      // Inserciones en lote.
       let insertedRows = [];
-      if (toInsert.length > 0) {
-        const { data, error } = await supabase.from('budgets').insert(toInsert).select();
-        if (error) throw error;
-        insertedRows = data || [];
+      if (demo) {
+        // Sin backend: las filas nuevas se materializan en memoria con id local
+        // y el mismo shape que devolvería Postgres.
+        insertedRows = toInsert.map((r) => ({
+          id: localId(),
+          category_id: r.category_id,
+          amount: r.amount,
+          month: r.month,
+          created_at: new Date().toISOString(),
+        }));
+      } else {
+        // Actualizaciones en paralelo.
+        await Promise.all(
+          toUpdate.map((u) => supabase.from('budgets').update({ amount: u.amount }).eq('id', u.id))
+        );
+
+        // Inserciones en lote.
+        if (toInsert.length > 0) {
+          const { data, error } = await supabase.from('budgets').insert(toInsert).select();
+          if (error) throw error;
+          insertedRows = data || [];
+        }
       }
 
       // Reflejar en el estado local.
@@ -217,6 +243,11 @@ const useBudgetStore = create(
   },
 
   deleteBudget: async (id) => {
+    if (isDemoActive()) {
+      set((state) => ({ budgets: state.budgets.filter((b) => b.id !== id) }));
+      return;
+    }
+
     const { error } = await supabase.from('budgets').delete().eq('id', id);
     if (!error) {
       set((state) => ({ budgets: state.budgets.filter((b) => b.id !== id) }));

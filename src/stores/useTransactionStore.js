@@ -156,11 +156,13 @@ const useTransactionStore = create(
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes || null;
     if (updates.cashbackEarned !== undefined) dbUpdates.cashback_earned = Number(updates.cashbackEarned);
 
-    const { error } = await supabase.from('transactions').update(dbUpdates).eq('id', id);
-    if (error) {
-      if (import.meta.env.DEV) console.error('Transaction update error:', error);
-      toast.error(tr('stores.transactions.updateError') + error.message);
-      return;
+    if (!isDemoActive()) {
+      const { error } = await supabase.from('transactions').update(dbUpdates).eq('id', id);
+      if (error) {
+        if (import.meta.env.DEV) console.error('Transaction update error:', error);
+        toast.error(tr('stores.transactions.updateError') + error.message);
+        return;
+      }
     }
 
     set((state) => ({
@@ -172,11 +174,13 @@ const useTransactionStore = create(
   },
 
   deleteTransaction: async (id) => {
-    const { error } = await supabase.from('transactions').delete().eq('id', id);
-    if (error) {
-      if (import.meta.env.DEV) console.error('Transaction delete error:', error);
-      toast.error(tr('stores.transactions.deleteError') + error.message);
-      return false;
+    if (!isDemoActive()) {
+      const { error } = await supabase.from('transactions').delete().eq('id', id);
+      if (error) {
+        if (import.meta.env.DEV) console.error('Transaction delete error:', error);
+        toast.error(tr('stores.transactions.deleteError') + error.message);
+        return false;
+      }
     }
     set((state) => ({
       transactions: state.transactions.filter((t) => t.id !== id),
@@ -189,8 +193,15 @@ const useTransactionStore = create(
   // que restaurar devuelve exactamente lo que se eliminó. El id cambia (fila
   // nueva), lo cual es seguro: nada referencia una transacción por id.
   restoreTransaction: async (tx) => {
-    const user = await getCurrentUser();
-    if (!user) return false;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return false;
+
+    if (demo) {
+      // En demo se reinserta con su id original (no hay Postgres que asigne uno).
+      set((state) => ({ transactions: [tx, ...state.transactions] }));
+      return true;
+    }
 
     const dbTx = {
       user_id: user.id,
@@ -228,11 +239,13 @@ const useTransactionStore = create(
     if (!ids || ids.length === 0) return [];
     // Capturamos las filas antes de borrarlas para poder ofrecer "Deshacer".
     const removed = get().transactions.filter((t) => ids.includes(t.id));
-    const { error } = await supabase.from('transactions').delete().in('id', ids);
-    if (error) {
-      if (import.meta.env.DEV) console.error('Bulk delete error:', error);
-      toast.error(tr('stores.transactions.bulkDeleteError'));
-      return [];
+    if (!isDemoActive()) {
+      const { error } = await supabase.from('transactions').delete().in('id', ids);
+      if (error) {
+        if (import.meta.env.DEV) console.error('Bulk delete error:', error);
+        toast.error(tr('stores.transactions.bulkDeleteError'));
+        return [];
+      }
     }
     set((state) => ({
       transactions: state.transactions.filter((t) => !ids.includes(t.id)),
@@ -243,8 +256,15 @@ const useTransactionStore = create(
   // Re-inserta varias transacciones borradas (para "Deshacer" en bloque).
   restoreManyTransactions: async (txs) => {
     if (!txs || txs.length === 0) return false;
-    const user = await getCurrentUser();
-    if (!user) return false;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return false;
+
+    if (demo) {
+      // Reinserta con sus ids originales, igual que restoreTransaction.
+      set((state) => ({ transactions: [...txs, ...state.transactions] }));
+      return true;
+    }
 
     const dbTxs = txs.map((tx) => ({
       user_id: user.id,
@@ -288,24 +308,26 @@ const useTransactionStore = create(
     const transactionsToUpdate = get().transactions.filter(t => ids.includes(t.id));
     toast.loading(tr('stores.transactions.assigningCard'), { id: 'bulk-update' });
     
-    const dbUpdatesPromises = transactionsToUpdate.map(t => {
-      // Cashback solo para gastos; el monto ya está en DOP.
-      const cashback = (card && earnsCashback(t.type))
-        ? computeCashback(card, t.categoryId, t.amount)
-        : 0;
+    // Cashback solo para gastos; el monto ya está en DOP. El cálculo es el
+    // mismo en ambos modos; en demo solo se salta el viaje a Supabase.
+    const cashbackFor = (t) => ((card && earnsCashback(t.type))
+      ? computeCashback(card, t.categoryId, t.amount)
+      : 0);
 
-      return supabase.from('transactions').update({
-        card_id: dbCardId,
-        cashback_earned: cashback 
-      }).eq('id', t.id).then(({error}) => ({ id: t.id, error, cashback }));
-    });
-    
-    const results = await Promise.all(dbUpdatesPromises);
+    const results = isDemoActive()
+      ? transactionsToUpdate.map((t) => ({ id: t.id, error: null, cashback: cashbackFor(t) }))
+      : await Promise.all(transactionsToUpdate.map((t) => {
+        const cashback = cashbackFor(t);
+        return supabase.from('transactions').update({
+          card_id: dbCardId,
+          cashback_earned: cashback
+        }).eq('id', t.id).then(({ error }) => ({ id: t.id, error, cashback }));
+      }));
     const hasError = results.some(r => r.error);
     
     if (hasError) {
       if (import.meta.env.DEV) console.error('Bulk update error', results);
-      toast.error('Error actualizando algunas transacciones', { id: 'bulk-update' });
+      toast.error(tr('stores.transactions.bulkUpdateError'), { id: 'bulk-update' });
     } else {
       toast.success(tr('stores.transactions.bulkUpdated'), { id: 'bulk-update' });
     }
@@ -330,17 +352,19 @@ const useTransactionStore = create(
     const cards = useCreditCardStore.getState().cards;
     const transactionsToUpdate = get().transactions.filter((t) => ids.includes(t.id));
     toast.loading(tr('stores.transactions.assigningCategory'), { id: 'bulk-update' });
-    const dbUpdatesPromises = transactionsToUpdate.map((t) => {
+    const cashbackFor = (t) => {
       const card = t.cardId ? cards.find((c) => c.id === t.cardId) : null;
-      const cashback = (card && earnsCashback(t.type))
+      return (card && earnsCashback(t.type))
         ? computeCashback(card, dbCategoryId, t.amount) : 0;
-      return supabase.from('transactions').update({
-        category_id: dbCategoryId, cashback_earned: cashback,
-      }).eq('id', t.id).then(({ error }) => ({ id: t.id, error, cashback }));
-    });
-    const results = await Promise.all(dbUpdatesPromises);
+    };
+
+    const results = isDemoActive()
+      ? transactionsToUpdate.map((t) => ({ id: t.id, error: null, cashback: cashbackFor(t) }))
+      : await Promise.all(transactionsToUpdate.map((t) => supabase.from('transactions').update({
+        category_id: dbCategoryId, cashback_earned: cashbackFor(t),
+      }).eq('id', t.id).then(({ error }) => ({ id: t.id, error, cashback: cashbackFor(t) }))));
     if (results.some((r) => r.error)) {
-      toast.error('Error actualizando algunas transacciones', { id: 'bulk-update' });
+      toast.error(tr('stores.transactions.bulkUpdateError'), { id: 'bulk-update' });
     } else {
       toast.success(tr('stores.transactions.categoriesUpdated'), { id: 'bulk-update' });
     }
@@ -357,8 +381,9 @@ const useTransactionStore = create(
   },
 
   bulkAddTransactions: async (transactions) => {
-    const user = await getCurrentUser();
-    if (!user) return 0;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return 0;
 
     // Las filas pueden traer cardId (p. ej. recurrentes pagadas con tarjeta).
     // El monto ya viene en la moneda base; el cashback solo aplica a gastos con tarjeta.
@@ -370,7 +395,7 @@ const useTransactionStore = create(
         ? computeCashback(card, t.categoryId, t.amount)
         : 0;
       return {
-        user_id: user.id,
+        user_id: user?.id,
         category_id: t.categoryId || null,
         card_id: cardId,
         amount: t.amount,
@@ -382,6 +407,24 @@ const useTransactionStore = create(
         cashback_earned: cashback,
       };
     });
+
+    if (demo) {
+      const newTxs = dbTxs.map((d) => ({
+        id: localId(),
+        categoryId: d.category_id || '',
+        cardId: d.card_id,
+        amount: Number(d.amount),
+        type: d.type,
+        description: d.description,
+        date: d.date,
+        notes: d.notes,
+        currency: d.currency,
+        cashbackEarned: Number(d.cashback_earned) || 0,
+        createdAt: new Date().toISOString(),
+      }));
+      set((state) => ({ transactions: [...newTxs, ...state.transactions] }));
+      return newTxs.length;
+    }
 
     // Insert in batches of 100 to avoid payload limits
     const batchSize = 100;
