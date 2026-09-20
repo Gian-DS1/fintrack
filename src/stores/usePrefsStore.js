@@ -12,7 +12,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
-import { isDemoActive } from '../stitch/demoMode';
+import { isDemoActive } from '../stitch/demoFlag';
 import { setRuntimeCurrency } from '../utils/currencyRuntime';
 
 const BUDGET_LEVELS = ['tracking', '503020', 'zero'];

@@ -1,12 +1,11 @@
 // Tarjetas — shell: header + grid de tarjetas (CardItem) + modales. La lógica de
 // saldos/abonos/cashback ya vive en utils/creditCards.js y el store.
 import { useState } from 'react';
-import toast from 'react-hot-toast';
+import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import { Stagger } from '../StitchMotion';
 import useCreditCardStore from '../../stores/useCreditCardStore';
 import useTransactionStore from '../../stores/useTransactionStore';
-import { isDemoActive, demoDeleteCard, demoRestoreCard } from '../demoMode';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
 import CardItem from './cards/CardItem';
@@ -28,18 +27,10 @@ export default function StitchCards({ embedded = false }) {
   const openEdit = (c) => { setEditing(c); setShowForm(true); };
 
   const onDelete = (card) => {
-    if (isDemoActive()) demoDeleteCard(card.id); else deleteCard(card.id);
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.cards.cardDeleted')}
-        <button
-          onClick={() => {
-            if (isDemoActive()) demoRestoreCard(card); else addCard(card);
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    deleteCard(card.id);
+    toastUndo(tr('screens.cards.cardDeleted'), () => {
+      addCard(card);
+    });
   };
 
   return (

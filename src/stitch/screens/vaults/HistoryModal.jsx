@@ -1,22 +1,20 @@
 // Historial de aportes de una meta: resumen (total aportado + proyección) y lista
 // con borrar + Deshacer. El borrado revierte saldo y la transacción enlazada.
-import toast from 'react-hot-toast';
+import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
 import Emoji from '../../Emoji';
 import useSavingsStore from '../../../stores/useSavingsStore';
-import { isDemoActive, demoDeleteContribution, demoAddContribution } from '../../demoMode';
 import { formatCurrency, formatDate, toISODate } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { tr } from '../../../i18n/runtime';
 import { getProjection } from './projection';
-import { Modal } from './vaultsUi';
+import { Modal } from '../../formUi';
 
 const fmt = (n, c) => formatCurrency(n, c);
 
 export default function HistoryModal({ goal: goalProp, onClose }) {
   const { t } = useI18n();
   const { goals, contributions, addContribution, deleteContribution, restoreContribution } = useSavingsStore();
-  const demo = isDemoActive();
 
   // Lee la meta VIVA del store (su saldo cambia al borrar aportes dentro del modal).
   const goal = goals.find((g) => g.id === goalProp.id) || goalProp;
@@ -30,25 +28,11 @@ export default function HistoryModal({ goal: goalProp, onClose }) {
   const onDelete = async (c) => {
     // A diferencia de Deudas, no avisamos por hadTransactionLink: todo aporte
     // nace con su transacción enlazada (no hay filas legadas sin enlace).
-    if (demo) {
-      const res = demoDeleteContribution(c.id);
-      if (!res?.ok) return;
-    } else {
-      const res = await deleteContribution(c.id);
-      if (!res?.ok) return;
-    }
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.vaults.contributionDeleted')}
-        <button
-          onClick={() => {
-            if (demo) demoAddContribution(c.goalId, c.amount, c.date, c.notes || '');
-            else if (restoreContribution) restoreContribution(c); else addContribution(c.goalId, c.amount, c.date, c.notes || '');
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    const res = await deleteContribution(c.id);
+    if (!res?.ok) return;
+    toastUndo(tr('screens.vaults.contributionDeleted'), () => {
+      if (restoreContribution) restoreContribution(c); else addContribution(c.goalId, c.amount, c.date, c.notes || '');
+    });
   };
 
   return (

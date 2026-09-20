@@ -1,7 +1,5 @@
 // Selectores puros del Dashboard. Helpers NUEVOS no cubiertos por utils:
-// desglose top5+Otros, uso de presupuesto, split de patrimonio. La salud
-// (getFinancialHealthScore) y la capacidad (getMonthlySavingCapacity) se reusan
-// directo desde utils/calculations en el shell.
+// desglose top5+Otros, uso de presupuesto, split de patrimonio.
 import { groupByCategory, getEffectiveAmount } from '../../../utils/calculations';
 import { getCardBalances } from '../../../utils/creditCards';
 import { tr, monthShort } from '../../../i18n/runtime';

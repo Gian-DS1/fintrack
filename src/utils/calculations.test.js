@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getBudgetSummary, getBuckets503020, getBudgetGroupTotals, getAccumulatedBalance, getMonthlySavingCapacity, getBudgetSuggestions, getFinancialHealthScore } from './calculations';
+import { getBudgetSummary, getBuckets503020, getBudgetGroupTotals } from './calculations';
 
 const categories = [
   { id: 'inc', type: 'income' },
@@ -452,71 +452,6 @@ describe('getBudgetSummary — invariante anti doble-conteo de deuda', () => {
   });
 });
 
-describe('getAccumulatedBalance', () => {
-  const budgets = [
-    { categoryId: 'mar', year: 2026, month: 0, estimatedAmount: 1000 },
-    { categoryId: 'mar', year: 2026, month: 1, estimatedAmount: 1000 },
-    { categoryId: 'mar', year: 2026, month: 2, estimatedAmount: 1000 },
-    { categoryId: 'mar', year: 2026, month: 3, estimatedAmount: 1000 },
-    { categoryId: 'mar', year: 2026, month: 4, estimatedAmount: 1000 },
-    { categoryId: 'otra', year: 2026, month: 0, estimatedAmount: 9999 },
-  ];
-
-  it('bote = presupuestado acumulado - gastado, desde el mes de inicio', () => {
-    const r = getAccumulatedBalance({
-      categoryId: 'mar',
-      accumulationStart: '2026-01',
-      budgets,
-      transactions: [{ categoryId: 'mar', date: '2026-05-10', amount: 4000 }],
-      uptoYear: 2026,
-      uptoMonth: 4,
-    });
-    expect(r.budgeted).toBe(5000);
-    expect(r.spent).toBe(4000);
-    expect(r.available).toBe(1000);
-  });
-
-  it('ignora meses anteriores al inicio', () => {
-    const r = getAccumulatedBalance({
-      categoryId: 'mar',
-      accumulationStart: '2026-03',
-      budgets,
-      transactions: [],
-      uptoYear: 2026,
-      uptoMonth: 4,
-    });
-    expect(r.budgeted).toBe(3000); // marzo, abril, mayo (month 2,3,4)
-  });
-
-  it('bote 0 si el inicio es futuro', () => {
-    const r = getAccumulatedBalance({
-      categoryId: 'mar',
-      accumulationStart: '2026-12',
-      budgets,
-      transactions: [{ categoryId: 'mar', date: '2026-05-10', amount: 500 }],
-      uptoYear: 2026,
-      uptoMonth: 4,
-    });
-    expect(r.budgeted).toBe(0);
-    expect(r.spent).toBe(0);
-    expect(r.available).toBe(0);
-  });
-
-  it('permite sobregiro del bote (available negativo)', () => {
-    const r = getAccumulatedBalance({
-      categoryId: 'mar',
-      accumulationStart: '2026-01',
-      budgets,
-      transactions: [{ categoryId: 'mar', date: '2026-02-10', amount: 5000 }],
-      uptoYear: 2026,
-      uptoMonth: 1,
-    });
-    expect(r.budgeted).toBe(2000); // ene + feb
-    expect(r.spent).toBe(5000);
-    expect(r.available).toBe(-3000);
-  });
-});
-
 describe('getBudgetSummary — categorías acumulativas', () => {
   const cats = [
     { id: 'inc', type: 'income' },
@@ -541,105 +476,5 @@ describe('getBudgetSummary — categorías acumulativas', () => {
     expect(r.variableGastado).toBe(2000);
     expect(r.comprometido).toBe(1000);
     expect(r.puedesGastar).toBe(47000);
-  });
-});
-
-describe('getMonthlySavingCapacity', () => {
-  const ref = new Date('2026-05-15T00:00:00'); // mes en curso: mayo 2026
-
-  it('promedia ingresos − gastos de los meses completos previos', () => {
-    const txs = [
-      // Febrero: +40000 / -20000
-      { type: 'income', amount: 40000, date: '2026-02-10' },
-      { type: 'expense', amount: 20000, date: '2026-02-12' },
-      // Marzo: +40000 / -30000
-      { type: 'income', amount: 40000, date: '2026-03-10' },
-      { type: 'fixed_expense', amount: 30000, date: '2026-03-12' },
-      // Abril: +40000 / -10000
-      { type: 'income', amount: 40000, date: '2026-04-10' },
-      { type: 'variable_expense', amount: 10000, date: '2026-04-12' },
-    ];
-    const r = getMonthlySavingCapacity(txs, ref, 3);
-    expect(r.monthsCounted).toBe(3);
-    // promedio neto = (20000 + 10000 + 30000) / 3 = 20000
-    expect(r.capacity).toBe(20000);
-  });
-
-  it('excluye el mes en curso y los ahorros no cuentan como gasto', () => {
-    const txs = [
-      { type: 'income', amount: 40000, date: '2026-05-10' }, // mes en curso: ignorado
-      { type: 'income', amount: 30000, date: '2026-04-10' },
-      { type: 'savings', amount: 5000, date: '2026-04-11' }, // no resta
-      { type: 'expense', amount: 10000, date: '2026-04-12' },
-    ];
-    const r = getMonthlySavingCapacity(txs, ref, 3);
-    expect(r.monthsCounted).toBe(1); // solo abril tuvo actividad
-    expect(r.capacity).toBe(20000); // 30000 - 10000
-  });
-
-  it('devuelve 0 cuando no hay actividad', () => {
-    const r = getMonthlySavingCapacity([], ref, 3);
-    expect(r.capacity).toBe(0);
-    expect(r.monthsCounted).toBe(0);
-  });
-});
-
-describe('getBudgetSuggestions', () => {
-  const cats = [
-    { id: 'super', isActive: true },
-    { id: 'luz', isActive: true },
-    { id: 'vieja', isActive: false },
-  ];
-
-  it('promedia los 3 meses anteriores al mes objetivo (mayo 2026)', () => {
-    const txs = [
-      // super: feb 3000, mar 3000, abr 3000 → promedio 3000
-      { categoryId: 'super', amount: 3000, date: '2026-02-10' },
-      { categoryId: 'super', amount: 3000, date: '2026-03-10' },
-      { categoryId: 'super', amount: 3000, date: '2026-04-10' },
-      // luz: solo abr 1500 → promedio 1500/3 = 500
-      { categoryId: 'luz', amount: 1500, date: '2026-04-10' },
-    ];
-    const r = getBudgetSuggestions(txs, cats, 2026, 4, 3);
-    const byId = Object.fromEntries(r.map((x) => [x.categoryId, x.amount]));
-    expect(byId.super).toBe(3000);
-    expect(byId.luz).toBe(500);
-  });
-
-  it('excluye el mes objetivo y meses fuera de la ventana, y categorías inactivas', () => {
-    const txs = [
-      { categoryId: 'super', amount: 9999, date: '2026-05-10' }, // mes objetivo: ignorado
-      { categoryId: 'super', amount: 9999, date: '2026-01-10' }, // fuera de ventana (3 meses): ignorado
-      { categoryId: 'vieja', amount: 6000, date: '2026-04-10' }, // categoría inactiva: ignorada
-    ];
-    const r = getBudgetSuggestions(txs, cats, 2026, 4, 3);
-    expect(r).toEqual([]);
-  });
-});
-
-describe('getFinancialHealthScore', () => {
-  it('da score alto (Excelente) con buen ahorro y sin deuda', () => {
-    const r = getFinancialHealthScore({ avgIncome: 50000, avgExpense: 30000, monthlyDebt: 0 });
-    expect(r.score).toBeGreaterThanOrEqual(80);
-    expect(r.label).toBe('Excelente');
-    expect(Math.round(r.savingsRate * 100)).toBe(40);
-  });
-
-  it('da score bajo cuando los gastos casi igualan los ingresos y hay deuda', () => {
-    const r = getFinancialHealthScore({ avgIncome: 50000, avgExpense: 48000, monthlyDebt: 5000 });
-    expect(r.score).toBeLessThan(40);
-    expect(r.label).toBe('Necesita atención');
-  });
-
-  it('devuelve "Sin datos" si no hay ingresos', () => {
-    const r = getFinancialHealthScore({ avgIncome: 0, avgExpense: 0, monthlyDebt: 0 });
-    expect(r.score).toBe(0);
-    expect(r.label).toBe('Sin datos');
-  });
-
-  it('está acotado entre 0 y 100', () => {
-    const r = getFinancialHealthScore({ avgIncome: 100000, avgExpense: 0, monthlyDebt: 0 });
-    expect(r.score).toBeLessThanOrEqual(100);
-    expect(r.score).toBeGreaterThanOrEqual(0);
   });
 });

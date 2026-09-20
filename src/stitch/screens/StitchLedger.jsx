@@ -2,7 +2,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import toast from 'react-hot-toast';
+import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import Emoji from '../Emoji';
 import { useScreenStrings } from '../../i18n/useScreenStrings';
@@ -14,10 +14,6 @@ import StitchDatePicker from '../StitchDatePicker';
 import StitchCurrencyInput from '../StitchCurrencyInput';
 import AutoCatChip from '../AutoCatChip';
 import { inputCls, Field, FormActions, Modal } from '../formUi';
-import {
-  isDemoActive, demoAddTransaction, demoUpdateTransaction, demoDeleteTransaction, demoRestoreTransaction,
-  demoBulkDeleteTransactions, demoRestoreManyTransactions, demoBulkAssignCategory, demoBulkAssignCard,
-} from '../demoMode';
 import { EASE_OUT } from '../motionTokens';
 import useTransactionStore from '../../stores/useTransactionStore';
 import useCategoryStore from '../../stores/useCategoryStore';
@@ -198,7 +194,6 @@ export default function StitchLedger() {
   const openCreate = () => { setForm(blank); setEditing(null); setErrors({}); resetSmart(); setShowForm(true); };
   const openEdit = (t) => { setForm({ ...blank, ...t, amount: String(t.amount) }); setEditing(t.id); setErrors({}); resetSmart(); setShowForm(true); };
 
-  const demo = isDemoActive();
 
   const submit = async (e) => {
     e.preventDefault();
@@ -214,43 +209,25 @@ export default function StitchLedger() {
     const description = titleCase(form.description);
     const data = { ...form, description, amount, cashbackEarned: cashbackToFreeze };
 
+    // El store emite el toast de guardado/actualización en ambos modos.
     if (editing) {
-      if (demo) demoUpdateTransaction(editing, data); else await updateTransaction(editing, data);
-      // El store ya muestra "Transacción actualizada" en login real; en demo no
-      // hay backend que avise, así que lo emitimos aquí. (Evita el doble toast.)
-      if (demo) toast.success(t('screens.ledger.updatedToast'));
+      await updateTransaction(editing, data);
     } else {
-      if (demo) demoAddTransaction(data); else await addTransaction(data);
-      if (form.isRecurring && !demo) {
+      await addTransaction(data);
+      if (form.isRecurring) {
         addRecurring({
           categoryId: form.categoryId, cardId: form.cardId, amount: Number(form.amount), type: form.type,
           description, notes: form.notes, frequency: form.recurrencePattern,
           nextDate: advanceDate(form.date, form.recurrencePattern),
         });
       }
-      // El store ya muestra "Transacción guardada exitosamente" con login real;
-      // en demo lo mostramos aquí (no hay backend que avise).
-      if (demo) toast.success(t('screens.ledger.savedToast'));
     }
     setShowForm(false); setForm(blank); setEditing(null); resetSmart();
   };
 
   const onDelete = async (t) => {
-    if (demo) {
-      demoDeleteTransaction(t.id);
-      toast((tt) => (
-        <span className="flex items-center gap-sm">{tr('screens.ledger.deletedToast')}
-          <button onClick={() => { demoRestoreTransaction(t); toast.dismiss(tt.id); }} className="text-primary font-bold underline">{tr('common.undo')}</button>
-        </span>
-      ), { duration: 6000 });
-      return;
-    }
     const ok = await deleteTransaction(t.id);
-    if (ok) toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.ledger.deletedToast')}
-        <button onClick={() => { restoreTransaction(t); toast.dismiss(tt.id); }} className="text-primary font-bold underline">{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    if (ok) toastUndo(tr('screens.ledger.deletedToast'), () => restoreTransaction(t));
   };
 
   const filtered = useMemo(() => {
@@ -347,38 +324,25 @@ export default function StitchLedger() {
   const clearSelection = () => setSelected(new Set());
 
   // Acciones en bloque. La lógica (recalculo de cashback, persistencia) vive en
-  // el store; aquí solo se orquesta + UI/toasts. En demo se usan los mutadores
-  // locales equivalentes. Solo se actúa sobre ids visibles (la intersección).
+  // el store; aquí solo se orquesta. Solo se actúa sobre ids visibles (la
+  // intersección).
   const selectedIds = () => visibleSelectedIds;
 
   const onBulkCategory = async (categoryId) => {
-    const ids = selectedIds();
-    if (demo) demoBulkAssignCategory(ids, categoryId);
-    else await bulkAssignCategory(ids, categoryId);
-    if (demo) toast.success(t('screens.ledger.categoriesUpdated'));
+    await bulkAssignCategory(selectedIds(), categoryId);
     clearSelection();
   };
   const onBulkCard = async (cardId) => {
-    const ids = selectedIds();
-    if (demo) demoBulkAssignCard(ids, cardId);
-    else await bulkAssignCard(ids, cardId);
-    if (demo) toast.success(strings.ledger.transactionsUpdated);
+    await bulkAssignCard(selectedIds(), cardId);
     clearSelection();
   };
   const onBulkDelete = async () => {
-    const ids = selectedIds();
-    const removed = demo ? demoBulkDeleteTransactions(ids) : await bulkDeleteTransactions(ids);
+    const removed = await bulkDeleteTransactions(selectedIds());
     clearSelection();
     if (removed && removed.length > 0) {
       const n = removed.length;
-      toast((tt) => (
-        <span className="flex items-center gap-sm">{n === 1 ? tr('screens.ledger.deletedOne') : tr('screens.ledger.deletedMany').replace('{n}', n)}
-          <button
-            onClick={() => { if (demo) demoRestoreManyTransactions(removed); else restoreManyTransactions(removed); toast.dismiss(tt.id); }}
-            className="text-primary font-bold underline"
-          >{tr('common.undo')}</button>
-        </span>
-      ), { duration: 6000 });
+      toastUndo(n === 1 ? tr('screens.ledger.deletedOne') : tr('screens.ledger.deletedMany').replace('{n}', n),
+        () => restoreManyTransactions(removed));
     }
   };
 

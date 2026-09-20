@@ -6,6 +6,12 @@ import useCategoryStore from './useCategoryStore';
 import useTransactionStore from './useTransactionStore';
 import useSavingsStore from './useSavingsStore';
 import { getCurrency } from '../utils/currencyRuntime';
+import { tr } from '../i18n/runtime';
+import { isDemoActive } from '../stitch/demoFlag';
+
+// Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
+const localId = () =>
+  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 const useDebtStore = create(
   persist(
@@ -15,6 +21,7 @@ const useDebtStore = create(
   loading: false,
 
   fetchDebtsAndPayments: async () => {
+    if (isDemoActive()) return; // demo: los datos los siembra demoMode
     set({ loading: true });
     const user = await getCurrentUser();
     if (!user) return set({ debts: [], payments: [], loading: false });
@@ -26,7 +33,7 @@ const useDebtStore = create(
 
     if (debtsRes.error || paymentsRes.error) {
       if (import.meta.env.DEV) console.error('Error fetching debts/payments:', debtsRes.error || paymentsRes.error);
-      toast.error('No se pudieron cargar las deudas');
+      toast.error(tr('stores.debts.loadError'));
     }
 
     let formattedDebts = [];
@@ -72,12 +79,31 @@ const useDebtStore = create(
   },
 
   addDebt: async (debt) => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
 
     const currentBal = Number(debt.currentBalance !== undefined ? debt.currentBalance : debt.originalAmount);
     const initialStatus = currentBal <= 0 ? 'paid_off' : 'active';
     const currency = debt.currency || getCurrency();
+
+    if (demo) {
+      // Conserva el id recibido para que el Deshacer restaure la deuda original.
+      const formatted = {
+        id: debt.id || localId(),
+        creditorName: debt.creditorName,
+        originalAmount: Number(debt.originalAmount),
+        currentBalance: currentBal,
+        interestRate: Number(debt.interestRate) || 0,
+        monthlyPayment: Number(debt.monthlyPayment) || 0,
+        due_date: debt.dueDate || debt.due_date || null,
+        status: debt.status || initialStatus,
+        currency,
+        createdAt: debt.createdAt || new Date().toISOString(),
+      };
+      set((state) => ({ debts: [...state.debts, formatted] }));
+      return formatted;
+    }
 
     const dbPayload = {
       user_id: user.id,
@@ -134,6 +160,13 @@ const useDebtStore = create(
     if (updates.monthlyPayment !== undefined) dbUpdates.minimum_payment = Number(updates.monthlyPayment);
     if (updates.dueDate !== undefined) dbUpdates.due_date = updates.dueDate || null;
 
+    if (isDemoActive()) {
+      set((state) => ({
+        debts: state.debts.map((d) => (d.id === id ? { ...d, ...updates, currentBalance: newCurrent, status: nextStatus, currency: currentCurrency } : d)),
+      }));
+      return;
+    }
+
     const { error } = await supabase.from('debts').update(dbUpdates).eq('id', id);
     if (!error) {
       set((state) => ({
@@ -143,6 +176,14 @@ const useDebtStore = create(
   },
 
   deleteDebt: async (id) => {
+    if (isDemoActive()) {
+      set((state) => ({
+        debts: state.debts.filter((d) => d.id !== id),
+        payments: state.payments.filter((p) => p.debtId !== id),
+      }));
+      return;
+    }
+
     // Due to ON DELETE CASCADE on debt_payments, deleting debt will delete its payments in DB
     const { error } = await supabase.from('debts').delete().eq('id', id);
     if (!error) {
@@ -154,8 +195,9 @@ const useDebtStore = create(
   },
 
   addPayment: async (debtId, amount, date, notes = '', savingsUsed = []) => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
 
     const debt = get().debts.find((d) => d.id === debtId);
     if (!debt) return;
@@ -163,26 +205,45 @@ const useDebtStore = create(
     const newBalance = Math.max(0, Number(debt.currentBalance) - Number(amount));
     const newStatus = newBalance <= 0 ? 'paid_off' : 'active';
 
-    const paymentPayload = {
-      user_id: user.id,
-      debt_id: debtId,
-      amount: Number(amount),
-      date: date,
-      remaining_balance: newBalance,
-      notes: notes || null,
-      savings_used: savingsUsed,
-    };
+    // En demo la fila del pago se crea en memoria; con sesión la inserta
+    // Postgres. A partir de `formattedPayment` el flujo es idéntico: baja el
+    // saldo de la deuda y enlaza la transacción del pago.
+    let paymentData;
+    if (demo) {
+      paymentData = {
+        id: localId(),
+        debt_id: debtId,
+        amount: Number(amount),
+        date,
+        remaining_balance: newBalance,
+        notes: notes || null,
+        savings_used: savingsUsed,
+        created_at: new Date().toISOString(),
+      };
+    } else {
+      const paymentPayload = {
+        user_id: user.id,
+        debt_id: debtId,
+        amount: Number(amount),
+        date: date,
+        remaining_balance: newBalance,
+        notes: notes || null,
+        savings_used: savingsUsed,
+      };
 
-    // We do both: insert payment and update debt
-    const { data: paymentData, error: paymentError } = await supabase.from('debt_payments').insert(paymentPayload).select().single();
-    if (paymentError) {
-      if (import.meta.env.DEV) console.error("Error adding payment", paymentError);
-      return;
+      // We do both: insert payment and update debt
+      const { data, error: paymentError } = await supabase.from('debt_payments').insert(paymentPayload).select().single();
+      if (paymentError) {
+        if (import.meta.env.DEV) console.error("Error adding payment", paymentError);
+        return;
+      }
+      paymentData = data;
+
+      const { error: debtError } = await supabase.from('debts').update({ current_balance: newBalance, status: newStatus }).eq('id', debtId);
+      if (debtError || !paymentData) return;
     }
 
-    const { error: debtError } = await supabase.from('debts').update({ current_balance: newBalance, status: newStatus }).eq('id', debtId);
-    
-    if (!debtError && paymentData) {
+    {
       const formattedPayment = {
         id: paymentData.id,
         debtId: paymentData.debt_id,
@@ -251,7 +312,9 @@ const useDebtStore = create(
 
           if (txId) {
             // Enlaza el pago con la transacción (DB + estado local).
-            await supabase.from('debt_payments').update({ transaction_id: txId }).eq('id', paymentData.id);
+            if (!isDemoActive()) {
+              await supabase.from('debt_payments').update({ transaction_id: txId }).eq('id', paymentData.id);
+            }
             set((state) => ({
               payments: state.payments.map((p) =>
                 p.id === paymentData.id ? { ...p, transactionId: txId } : p
@@ -267,7 +330,8 @@ const useDebtStore = create(
 
   // Pago de deuda con cascada (cuenta real). Si savingsPick no es null, retira ese
   // monto del ahorro (aporte negativo → baja la meta y devuelve efectivo) y registra
-  // el pago con savingsUsed para la reversa. Espejo de applyDebtPaymentWithCascade (demo).
+  // el pago con savingsUsed para la reversa. Vale igual en demo y con sesión:
+  // addContribution y addPayment ya resuelven cada modo por dentro.
   addPaymentWithCascade: async (debtId, amount, date, notes, savingsPick) => {
     const savingsUsed = [];
     if (savingsPick && savingsPick.amount > 0) {
@@ -292,7 +356,7 @@ const useDebtStore = create(
     const debt = get().debts.find((d) => d.id === payment.debtId);
 
     // Revertir saldo + estado de la deuda (si la deuda aún existe).
-    if (debt) {
+    if (debt && !isDemoActive()) {
       const restoredBalance = Number(debt.currentBalance) + Number(payment.amount);
       const restoredStatus = restoredBalance > 0 ? 'active' : 'paid_off';
       const { error: debtErr } = await supabase
@@ -301,17 +365,19 @@ const useDebtStore = create(
         .eq('id', debt.id);
       if (debtErr) {
         if (import.meta.env.DEV) console.error('Error reverting debt balance on payment delete:', debtErr);
-        toast.error('No se pudo revertir el saldo de la deuda');
+        toast.error(tr('stores.debts.revertBalanceError'));
         return { ok: false };
       }
     }
 
     // Borrar la fila del pago.
-    const { error: payErr } = await supabase.from('debt_payments').delete().eq('id', paymentId);
-    if (payErr) {
-      if (import.meta.env.DEV) console.error('Error deleting payment:', payErr);
-      toast.error('No se pudo eliminar el pago');
-      return { ok: false };
+    if (!isDemoActive()) {
+      const { error: payErr } = await supabase.from('debt_payments').delete().eq('id', paymentId);
+      if (payErr) {
+        if (import.meta.env.DEV) console.error('Error deleting payment:', payErr);
+        toast.error(tr('stores.debts.deletePaymentError'));
+        return { ok: false };
+      }
     }
 
     // Borrar la transacción enlazada (solo pagos nuevos la tienen).

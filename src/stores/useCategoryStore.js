@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import { findDuplicateCategories } from '../data/defaultCategories';
+import { isDemoActive } from '../stitch/demoFlag';
+
+// Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
+const localId = () =>
+  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
+// Orden alfabético estable, el mismo que usan addCategory y restoreCategory.
+const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' });
 
 // Shared across all calls: dedupes concurrent fetchCategories invocations so the
 // seeding logic can never run twice in parallel.
@@ -15,6 +23,7 @@ const useCategoryStore = create(
   error: null,
 
   fetchCategories: async () => {
+    if (isDemoActive()) return; // demo: los datos los siembra demoMode
     if (fetchInFlight) return fetchInFlight;
     fetchInFlight = (async () => {
     set({ loading: true, error: null });
@@ -82,9 +91,27 @@ const useCategoryStore = create(
   },
 
   addCategory: async (category) => {
-    const user = await getCurrentUser();
-    if (!user) return;
-    
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
+
+    if (demo) {
+      const newCat = {
+        id: category.id || localId(),
+        name: category.name,
+        type: category.type,
+        icon: category.icon,
+        color: category.color,
+        slug: category.slug || null,
+        keywords: category.keywords || [],
+        isActive: category.isActive !== undefined ? category.isActive : true,
+        sortOrder: get().categories.length,
+        createdAt: new Date().toISOString(),
+      };
+      set((state) => ({ categories: [...state.categories, newCat].sort(byName) }));
+      return;
+    }
+
     const dbCategory = {
       user_id: user.id,
       name: category.name,
@@ -120,32 +147,46 @@ const useCategoryStore = create(
     );
     if (found) return found.id;
 
-    const user = await getCurrentUser();
-    if (!user) return null;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return null;
 
-    const payload = {
-      user_id: user.id,
-      name: def.name,
-      type: def.type,
-      icon: def.icon,
-      color: def.color,
-      slug: def.slug || null,
-      keywords: def.keywords || [],
-      is_active: true,
-      sort_order: get().categories.length,
-    };
+    let newCat;
+    if (demo) {
+      newCat = {
+        id: localId(),
+        name: def.name,
+        type: def.type,
+        icon: def.icon,
+        color: def.color,
+        slug: def.slug || null,
+        keywords: def.keywords || [],
+        isActive: true,
+        sortOrder: get().categories.length,
+        createdAt: new Date().toISOString(),
+      };
+    } else {
+      const payload = {
+        user_id: user.id,
+        name: def.name,
+        type: def.type,
+        icon: def.icon,
+        color: def.color,
+        slug: def.slug || null,
+        keywords: def.keywords || [],
+        is_active: true,
+        sort_order: get().categories.length,
+      };
 
-    const { data, error } = await supabase.from('categories').insert(payload).select().single();
-    if (error || !data) {
-      if (import.meta.env.DEV) console.error('ensureCategory error:', error);
-      return null;
+      const { data, error } = await supabase.from('categories').insert(payload).select().single();
+      if (error || !data) {
+        if (import.meta.env.DEV) console.error('ensureCategory error:', error);
+        return null;
+      }
+      newCat = { ...data, isActive: data.is_active, sortOrder: data.sort_order };
     }
 
-    const newCat = { ...data, isActive: data.is_active, sortOrder: data.sort_order };
-    set((state) => ({
-      categories: [...state.categories, newCat].sort((a, b) =>
-        (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })),
-    }));
+    set((state) => ({ categories: [...state.categories, newCat].sort(byName) }));
 
     // Quitar del Supermercado del usuario las keywords que ahora pertenecen a esta
     // categoría dedicada (solo afecta a usuarios cuyo Supermercado aún las tenga).
@@ -160,7 +201,7 @@ const useCategoryStore = create(
       }
     }
 
-    return data.id;
+    return newCat.id;
   },
 
   updateCategory: async (id, updates) => {
@@ -182,6 +223,13 @@ const useCategoryStore = create(
       delete dbUpdates.accumulationStart;
     }
 
+    if (isDemoActive()) {
+      set((state) => ({
+        categories: state.categories.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      }));
+      return;
+    }
+
     const { error } = await supabase.from('categories').update(dbUpdates).eq('id', id);
     if (!error) {
       set((state) => ({
@@ -191,6 +239,11 @@ const useCategoryStore = create(
   },
 
   deleteCategory: async (id) => {
+    if (isDemoActive()) {
+      set((state) => ({ categories: state.categories.filter((c) => c.id !== id) }));
+      return;
+    }
+
     const { error } = await supabase.from('categories').delete().eq('id', id);
     if (!error) {
       set((state) => ({ categories: state.categories.filter((c) => c.id !== id) }));
@@ -198,8 +251,16 @@ const useCategoryStore = create(
   },
 
   restoreCategory: async (category) => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
+
+    if (demo) {
+      // Reinserta con su id original: el Deshacer devuelve la misma categoría.
+      set((state) => ({ categories: [...state.categories, category].sort(byName) }));
+      return;
+    }
+
     const dbCategory = {
       id: category.id, user_id: user.id, name: category.name, type: category.type,
       icon: category.icon, color: category.color, slug: category.slug || null,

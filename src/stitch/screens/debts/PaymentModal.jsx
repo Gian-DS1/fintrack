@@ -5,11 +5,10 @@ import toast from 'react-hot-toast';
 import StitchCurrencyInput from '../../StitchCurrencyInput';
 import StitchDatePicker from '../../StitchDatePicker';
 import useDebtStore from '../../../stores/useDebtStore';
-import { isDemoActive, demoAddDebtPayment, applyDebtPaymentWithCascade } from '../../demoMode';
 import { todayISO, formatCurrency } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { toastCelebrate } from '../../toastCelebrate';
-import { Modal, Field, FormActions, inputCls } from './debtsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import useTransactionStore from '../../../stores/useTransactionStore';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useSavingsStore from '../../../stores/useSavingsStore';
@@ -35,13 +34,8 @@ export default function PaymentModal({ debt, onClose }) {
 
   // Registra el pago (con o sin cascada). Llamado tras decidir la meta si hizo falta.
   const applyPayment = (amt, savingsPick) => {
-    if (isDemoActive()) {
-      if (savingsPick) applyDebtPaymentWithCascade(debt.id, amt, date, note.trim(), savingsPick);
-      else demoAddDebtPayment(debt.id, amt, date, note.trim());
-    } else {
-      if (savingsPick) addPaymentWithCascade(debt.id, amt, date, note.trim(), savingsPick);
-      else addPayment(debt.id, amt, date, note.trim());
-    }
+    if (savingsPick) addPaymentWithCascade(debt.id, amt, date, note.trim(), savingsPick);
+    else addPayment(debt.id, amt, date, note.trim());
     const newBal = Number(debt.currentBalance) - amt;
     if (newBal <= 0) toastCelebrate(t('screens.debts.debtPaidOff'));
     else toast.success(t('screens.debts.paymentRegistered').replace('{amt}', fmt(amt, debt.currency)), { duration: 4000 });

@@ -1,38 +1,28 @@
 // Modal de historial de abonos de una tarjeta. Lista los abonos (fecha, monto,
 // nota) de más reciente a más antiguo, con cashback de por vida arriba y borrar
 // con deshacer.
-import toast from 'react-hot-toast';
+import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
-import { isDemoActive, demoDeleteCardPayment, demoAddCardPayment } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import { tr } from '../../../i18n/runtime';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import { getLifetimeCashback } from '../../../utils/creditCards';
 import { formatCurrency, formatDate } from '../../../utils/formatters';
-import { Modal } from './cardsUi';
+import { Modal } from '../../formUi';
 
 const fmt = (n) => formatCurrency(n);
 
 export default function HistoryModal({ card, transactions, onClose }) {
   const { t } = useI18n();
   const { addCardPayment, deleteCardPayment } = useCreditCardStore();
-  const demo = isDemoActive();
   const payments = [...(card.payments || [])].sort((a, b) => (a.date < b.date ? 1 : -1));
   const cashback = getLifetimeCashback(card, transactions);
 
   const onDelete = (p) => {
-    if (demo) demoDeleteCardPayment(card.id, p.id); else deleteCardPayment(card.id, p.id);
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.cards.paymentDeleted')}
-        <button
-          onClick={() => {
-            if (demo) demoAddCardPayment(card.id, p); else addCardPayment(card.id, p);
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    deleteCardPayment(card.id, p.id);
+    toastUndo(tr('screens.cards.paymentDeleted'), () => {
+      addCardPayment(card.id, p);
+    });
   };
 
   return (

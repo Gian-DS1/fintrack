@@ -7,13 +7,13 @@ import toast from 'react-hot-toast';
 import MS from '../../MS';
 import StitchSelect from '../../StitchSelect';
 import StitchCurrencyInput from '../../StitchCurrencyInput';
-import { isDemoActive, demoAddCard, demoUpdateCard } from '../../demoMode';
+import { isDemoActive } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useCategoryStore from '../../../stores/useCategoryStore';
 import { getCatalogBanks, getCatalogCardsByBank, getCatalogCard, resolveCardCashback } from '../../../data/creditCardCatalog';
 import { normalizeCashbackRules } from '../../../utils/creditCards';
-import { Modal, Field, FormActions, inputCls } from './cardsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import CashbackEditor from './CashbackEditor';
 
 const COLORS = ['#bec2ff', '#50d8e9', '#bdd200', '#ffb689', '#ffb4ab', '#9aa0ff', '#e9a0d8'];
@@ -38,8 +38,7 @@ export default function CardForm({ editing, onClose }) {
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
-  // ensureCategory real con sesión; en demo no crea categorías (devuelve null).
-  const ensureCat = demo ? async () => null : useCategoryStore.getState().ensureCategory;
+  const ensureCat = useCategoryStore.getState().ensureCategory;
 
   const loadCatalogCard = async (catalogId) => {
     const tpl = getCatalogCard(catalogId);
@@ -76,13 +75,8 @@ export default function CardForm({ editing, onClose }) {
     const cashbackRules = normalizeCashbackRules(form.cashbackRules);
     const payload = { name: form.name, bank: form.bank, cutoffDay, dueDay, color: form.color, openingBalance: Number(form.openingBalance) || 0, cashbackRules, catalogId: form.catalogId || null };
 
-    if (editing) {
-      if (demo) { demoUpdateCard(editing.id, payload); toast.success(t('screens.cards.cardUpdated')); }
-      else await updateCard(editing.id, payload);
-    } else {
-      if (demo) { demoAddCard(payload); toast.success(t('screens.cards.cardSaved')); }
-      else await addCard(payload);
-    }
+    if (editing) await updateCard(editing.id, payload);
+    else await addCard(payload);
     onClose();
   };
 
