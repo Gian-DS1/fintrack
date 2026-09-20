@@ -1,6 +1,6 @@
 // FinTrack — Lógica de ciclos de tarjetas de crédito (pura)
 
-import { toISODate } from './formatters';
+import { toISODate } from './formatters.js';
 
 // Fecha del día `day` en (year, month0), ajustando a meses cortos.
 function dayInMonth(year, month0, day) {

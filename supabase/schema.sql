@@ -20,6 +20,11 @@ create table if not exists public.profiles (
   user_id       uuid primary key references auth.users(id) on delete cascade,
   budget_level  text not null default 'tracking',
   tutorial_seen boolean not null default false,
+  -- Recordatorios de pago de tarjetas por correo (ver add_card_reminders.sql).
+  -- reminder_days_before: días de antelación del aviso. El aviso del día del
+  -- vencimiento y los de mora son automáticos y no se configuran aquí.
+  reminders_enabled    boolean not null default true,
+  reminder_days_before integer[] not null default '{5,1}',
   updated_at    timestamptz not null default now()
 );
 
@@ -193,6 +198,20 @@ create table if not exists public.recurring_transactions (
   created_at  timestamptz not null default now()
 );
 
+-- ── Bitácora de recordatorios enviados ──────────────────────────────────────
+-- Deduplicación de los correos de pago de tarjetas. La PK compuesta garantiza
+-- que un mismo aviso (tarjeta + fecha de pago + antelación) se envía una sola
+-- vez. offset_key: 5/1 = antelación, 0 = vence hoy, -1..-3 = mora.
+create table if not exists public.reminder_log (
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  card_id     uuid not null references public.credit_cards(id) on delete cascade,
+  due_date    date not null,
+  offset_key  integer not null,
+  channel     text not null default 'email',
+  sent_at     timestamptz not null default now(),
+  primary key (user_id, card_id, due_date, offset_key, channel)
+);
+
 -- ============================================================================
 -- Índices sobre foreign keys (acelera JOINs y DELETE en cascada).
 -- transactions.user_id ya queda cubierto por transactions_user_date_idx.
@@ -216,6 +235,7 @@ create index if not exists plans_user_id_idx                      on public.plan
 create index if not exists recurring_transactions_user_id_idx     on public.recurring_transactions (user_id);
 create index if not exists recurring_transactions_category_id_idx on public.recurring_transactions (category_id);
 create index if not exists recurring_transactions_card_id_idx     on public.recurring_transactions (card_id);
+create index if not exists reminder_log_user_id_idx               on public.reminder_log (user_id);
 
 -- ============================================================================
 -- Row Level Security + políticas "solo mis filas" + grants para cada tabla.
@@ -229,7 +249,7 @@ declare
   tables text[] := array[
     'profiles', 'categories', 'credit_cards', 'transactions', 'budgets', 'budget_groups',
     'savings', 'savings_contributions',
-    'debts', 'debt_payments', 'plans', 'recurring_transactions'
+    'debts', 'debt_payments', 'plans', 'recurring_transactions', 'reminder_log'
   ];
 begin
   foreach t in array tables loop

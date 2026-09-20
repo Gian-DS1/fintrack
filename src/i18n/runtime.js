@@ -2,7 +2,7 @@
 // I18nProvider sincroniza el idioma aquí; como los selectors/formatters corren
 // durante el render, siempre leen el idioma vigente.
 
-import translations from './translations';
+import translations from './translations.js';
 
 let currentLanguage = 'es';
 

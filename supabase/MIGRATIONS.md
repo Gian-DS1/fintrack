@@ -104,6 +104,32 @@ Idempotent and additive.
   database migration may be missing"). It does not corrupt data. Running the
   migration enables the feature.
 
+## Card payment reminders by email (2026-09-19)
+
+**`add_card_reminders.sql`** — adds two preference columns to `profiles`
+(`reminders_enabled`, `reminder_days_before`) and creates the `reminder_log`
+table (with RLS and grants) used to deduplicate sent reminders. Idempotent and
+additive.
+
+Powers the daily cron `/api/cron/card-reminders`, which emails the user before a
+credit card's due date. `reminder_log`'s composite primary key
+(`user_id, card_id, due_date, offset_key, channel`) is what guarantees a given
+notice is sent only once; the cron writes the row **after** a successful send, so
+a mail failure is simply retried the next day.
+
+`offset_key` is the day offset relative to the due date: `5`/`1` for the
+configurable advance notices, `0` for "due today", and `-1..-3` for overdue.
+
+### What happens if you deploy the code BEFORE running this migration?
+- **Reads:** safe. `fetchPrefs` falls back to the defaults (reminders on, 5 and 1
+  days before), and the cron endpoint logs a warning and returns
+  `200 { sent: 0, skipped: 'migration' }` instead of failing.
+- **Writes:** the reminders toggle in Settings fails and rolls back optimistically.
+  No data is corrupted. Running the migration enables the feature.
+- **Emails:** none are sent until the migration runs and the Vercel env vars
+  (`RESEND_API_KEY`, `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, …) are set — see
+  `.env.example`.
+
 ## Previous migrations (already applied in historical production)
 
 `schema.sql` is the canonical source of truth (idempotent; it already includes the
