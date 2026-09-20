@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import useCategoryStore from './useCategoryStore';
 import useTransactionStore from './useTransactionStore';
 import { getCurrency } from '../utils/currencyRuntime';
+import { tr } from '../i18n/runtime';
 
 // Resuelve una categoría de tipo ahorro para enlazar la transacción del aporte.
 // Cae a '' si la cuenta no tiene una categoría savings (la tx sigue type:savings).
@@ -33,7 +34,7 @@ const useSavingsStore = create(
 
     if (goalsRes.error) {
       if (import.meta.env.DEV) console.error('Error fetching savings goals:', goalsRes.error);
-      toast.error('No se pudieron cargar las metas de ahorro');
+      toast.error(tr('stores.savings.loadError'));
       return set({ loading: false });
     }
 
@@ -106,7 +107,7 @@ const useSavingsStore = create(
       return formatted;
     } else {
       if (import.meta.env.DEV) console.error('Error adding saving goal', error);
-      toast.error('No se pudo crear la meta. Si acabas de actualizar, puede faltar una migración de la base de datos.');
+      toast.error(tr('stores.savings.createError'));
     }
   },
 
@@ -138,7 +139,7 @@ const useSavingsStore = create(
     const { error } = await supabase.from('savings').update(dbUpdates).eq('id', id);
     if (error) {
       if (import.meta.env.DEV) console.error('Error updating saving goal', error);
-      toast.error('No se pudo actualizar la meta. Si acabas de actualizar la app, puede faltar una migración de la base de datos.');
+      toast.error(tr('stores.savings.updateError'));
       return false;
     }
     set((state) => ({
@@ -183,7 +184,7 @@ const useSavingsStore = create(
       .from('savings_contributions').insert(contribPayload).select().single();
     if (contribErr) {
       if (import.meta.env.DEV) console.error('Error adding contribution', contribErr);
-      toast.error('No se pudo registrar el aporte');
+      toast.error(tr('stores.savings.contributionError'));
       return;
     }
 
@@ -215,11 +216,11 @@ const useSavingsStore = create(
           contributions: state.contributions.map((c) => (c.id === contribData.id ? { ...c, transactionId: txId } : c)),
         }));
       } else {
-        toast('Aporte guardado, pero no se generó la transacción enlazada.', { duration: 5000 });
+        toast(tr('stores.savings.contributionNoTransaction'), { duration: 5000 });
       }
     } catch (err) {
       if (import.meta.env.DEV) console.error('Error syncing contribution with transactions:', err);
-      toast('Aporte guardado, pero no se pudo enlazar la transacción.', { duration: 5000 });
+      toast(tr('stores.savings.contributionLinkError'), { duration: 5000 });
     }
   },
 
@@ -235,7 +236,7 @@ const useSavingsStore = create(
       const restored = Math.max(0, Number(goal.currentAmount) - Number(contrib.amount));
       const ok = await get().updateGoal(goal.id, { currentAmount: restored });
       if (!ok) {
-        toast.error('No se pudo revertir el saldo de la meta');
+        toast.error(tr('stores.savings.revertBalanceError'));
         return { ok: false };
       }
     }
@@ -243,7 +244,7 @@ const useSavingsStore = create(
     const { error } = await supabase.from('savings_contributions').delete().eq('id', id);
     if (error) {
       if (import.meta.env.DEV) console.error('Error deleting contribution', error);
-      toast.error('No se pudo eliminar el aporte');
+      toast.error(tr('stores.savings.deleteContributionError'));
       return { ok: false };
     }
 
@@ -287,7 +288,7 @@ const useSavingsStore = create(
     const { data: goalData, error: goalErr } = await supabase.from('savings').insert(dbPayload).select().single();
     if (goalErr || !goalData) {
       if (import.meta.env.DEV) console.error('Error restoring saving goal', goalErr);
-      toast.error('No se pudo restaurar la meta.');
+      toast.error(tr('stores.savings.restoreError'));
       return;
     }
     const formatted = {

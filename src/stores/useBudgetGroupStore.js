@@ -9,6 +9,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { isDemoActive } from '../stitch/demoMode';
+import { tr } from '../i18n/runtime';
 
 const demoId = () =>
   (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -68,7 +69,7 @@ const useBudgetGroupStore = create(
           .single();
         if (error || !data) {
           if (import.meta.env.DEV) console.error('Error creating budget group:', error);
-          toast.error('No se pudo crear el grupo (puede faltar una migración de la base de datos)');
+          toast.error(tr('stores.budgetGroups.createError'));
           return false;
         }
         set((s) => ({ groups: [...s.groups, fromDb(data)] }));
@@ -94,7 +95,7 @@ const useBudgetGroupStore = create(
         const { error } = await supabase.from('budget_groups').update(dbUpdates).eq('id', id);
         if (error) {
           if (import.meta.env.DEV) console.error('Error updating budget group:', error);
-          toast.error('No se pudo guardar el grupo (puede faltar una migración de la base de datos)');
+          toast.error(tr('stores.budgetGroups.saveError'));
           set({ groups: prev });
           return false;
         }
@@ -109,7 +110,7 @@ const useBudgetGroupStore = create(
         const { error } = await supabase.from('budget_groups').delete().eq('id', id);
         if (error) {
           if (import.meta.env.DEV) console.error('Error deleting budget group:', error);
-          toast.error('No se pudo eliminar el grupo');
+          toast.error(tr('stores.budgetGroups.deleteError'));
           set({ groups: prev });
           return false;
         }

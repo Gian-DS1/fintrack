@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import useCreditCardStore from './useCreditCardStore';
 import { computeCashback } from '../utils/creditCards';
 import { getCurrency } from '../utils/currencyRuntime';
+import { tr } from '../i18n/runtime';
 
 // El cashback aplica a CUALQUIER tipo de gasto (fijo o variable), no solo al
 // tipo genérico 'expense'. Misma regla que el formulario de transacciones.
@@ -42,7 +43,7 @@ const useTransactionStore = create(
       set({ transactions: formattedData, loading: false });
     } else {
       if (import.meta.env.DEV) console.error('Error fetching transactions:', error);
-      toast.error('No se pudieron cargar las transacciones');
+      toast.error(tr('stores.transactions.loadError'));
       set({ loading: false });
     }
   },
@@ -128,7 +129,7 @@ const useTransactionStore = create(
     const { error } = await supabase.from('transactions').update(dbUpdates).eq('id', id);
     if (error) {
       if (import.meta.env.DEV) console.error('Transaction update error:', error);
-      toast.error('Error al actualizar: ' + error.message);
+      toast.error(tr('stores.transactions.updateError') + error.message);
       return;
     }
 
@@ -137,14 +138,14 @@ const useTransactionStore = create(
         t.id === id ? { ...t, ...updates } : t
       ),
     }));
-    toast.success('Transacción actualizada');
+    toast.success(tr('stores.transactions.updated'));
   },
 
   deleteTransaction: async (id) => {
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (error) {
       if (import.meta.env.DEV) console.error('Transaction delete error:', error);
-      toast.error('Error al eliminar: ' + error.message);
+      toast.error(tr('stores.transactions.deleteError') + error.message);
       return false;
     }
     set((state) => ({
@@ -177,7 +178,7 @@ const useTransactionStore = create(
     const { data, error } = await supabase.from('transactions').insert(dbTx).select().single();
     if (error) {
       if (import.meta.env.DEV) console.error('Transaction restore error:', error);
-      toast.error('No se pudo restaurar la transacción');
+      toast.error(tr('stores.transactions.restoreError'));
       return false;
     }
     if (data) {
@@ -200,7 +201,7 @@ const useTransactionStore = create(
     const { error } = await supabase.from('transactions').delete().in('id', ids);
     if (error) {
       if (import.meta.env.DEV) console.error('Bulk delete error:', error);
-      toast.error('Error al eliminar transacciones');
+      toast.error(tr('stores.transactions.bulkDeleteError'));
       return [];
     }
     set((state) => ({
@@ -231,7 +232,7 @@ const useTransactionStore = create(
     const { data, error } = await supabase.from('transactions').insert(dbTxs).select();
     if (error) {
       if (import.meta.env.DEV) console.error('Bulk restore error:', error);
-      toast.error('No se pudieron restaurar las transacciones');
+      toast.error(tr('stores.transactions.bulkRestoreError'));
       return false;
     }
     if (data) {
@@ -255,7 +256,7 @@ const useTransactionStore = create(
     const card = dbCardId ? cards.find(c => c.id === dbCardId) : null;
     
     const transactionsToUpdate = get().transactions.filter(t => ids.includes(t.id));
-    toast.loading('Asignando tarjeta...', { id: 'bulk-update' });
+    toast.loading(tr('stores.transactions.assigningCard'), { id: 'bulk-update' });
     
     const dbUpdatesPromises = transactionsToUpdate.map(t => {
       // Cashback solo para gastos; el monto ya está en DOP.
@@ -276,7 +277,7 @@ const useTransactionStore = create(
       if (import.meta.env.DEV) console.error('Bulk update error', results);
       toast.error('Error actualizando algunas transacciones', { id: 'bulk-update' });
     } else {
-      toast.success('Transacciones actualizadas', { id: 'bulk-update' });
+      toast.success(tr('stores.transactions.bulkUpdated'), { id: 'bulk-update' });
     }
     
     set((state) => ({
@@ -298,7 +299,7 @@ const useTransactionStore = create(
     const dbCategoryId = categoryId || null;
     const cards = useCreditCardStore.getState().cards;
     const transactionsToUpdate = get().transactions.filter((t) => ids.includes(t.id));
-    toast.loading('Asignando categoría...', { id: 'bulk-update' });
+    toast.loading(tr('stores.transactions.assigningCategory'), { id: 'bulk-update' });
     const dbUpdatesPromises = transactionsToUpdate.map((t) => {
       const card = t.cardId ? cards.find((c) => c.id === t.cardId) : null;
       const cashback = (card && earnsCashback(t.type))
@@ -311,7 +312,7 @@ const useTransactionStore = create(
     if (results.some((r) => r.error)) {
       toast.error('Error actualizando algunas transacciones', { id: 'bulk-update' });
     } else {
-      toast.success('Categorías actualizadas', { id: 'bulk-update' });
+      toast.success(tr('stores.transactions.categoriesUpdated'), { id: 'bulk-update' });
     }
     set((state) => ({
       transactions: state.transactions.map((t) => {
@@ -363,7 +364,7 @@ const useTransactionStore = create(
       if (error) {
         if (import.meta.env.DEV) console.error('Bulk insert error:', error);
         hasError = true;
-        toast.error('Error importando lote: ' + error.message);
+        toast.error(tr('stores.transactions.importBatchError') + error.message);
         break;
       }
       if (data) {
@@ -377,7 +378,7 @@ const useTransactionStore = create(
     }
 
     if (hasError && allInserted.length > 0) {
-      toast.success(`Se importaron ${allInserted.length} transacciones (algunas fallaron)`);
+      toast.success(tr('stores.transactions.importedPartial').replace('{n}', allInserted.length));
     }
 
     return allInserted.length;

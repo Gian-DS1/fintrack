@@ -6,6 +6,7 @@ import useCategoryStore from './useCategoryStore';
 import useTransactionStore from './useTransactionStore';
 import useSavingsStore from './useSavingsStore';
 import { getCurrency } from '../utils/currencyRuntime';
+import { tr } from '../i18n/runtime';
 
 const useDebtStore = create(
   persist(
@@ -26,7 +27,7 @@ const useDebtStore = create(
 
     if (debtsRes.error || paymentsRes.error) {
       if (import.meta.env.DEV) console.error('Error fetching debts/payments:', debtsRes.error || paymentsRes.error);
-      toast.error('No se pudieron cargar las deudas');
+      toast.error(tr('stores.debts.loadError'));
     }
 
     let formattedDebts = [];
@@ -301,7 +302,7 @@ const useDebtStore = create(
         .eq('id', debt.id);
       if (debtErr) {
         if (import.meta.env.DEV) console.error('Error reverting debt balance on payment delete:', debtErr);
-        toast.error('No se pudo revertir el saldo de la deuda');
+        toast.error(tr('stores.debts.revertBalanceError'));
         return { ok: false };
       }
     }
@@ -310,7 +311,7 @@ const useDebtStore = create(
     const { error: payErr } = await supabase.from('debt_payments').delete().eq('id', paymentId);
     if (payErr) {
       if (import.meta.env.DEV) console.error('Error deleting payment:', payErr);
-      toast.error('No se pudo eliminar el pago');
+      toast.error(tr('stores.debts.deletePaymentError'));
       return { ok: false };
     }
 

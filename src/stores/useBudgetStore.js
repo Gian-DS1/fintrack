@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
+import { tr } from '../i18n/runtime';
 
 const useBudgetStore = create(
   persist(
@@ -30,7 +31,7 @@ const useBudgetStore = create(
       set({ budgets: formatted, loading: false });
     } else {
       if (import.meta.env.DEV) console.error('Error fetching budgets:', error);
-      toast.error('No se pudieron cargar los presupuestos');
+      toast.error(tr('stores.budgets.loadError'));
       set({ loading: false });
     }
   },
@@ -206,7 +207,7 @@ const useBudgetStore = create(
       return toUpdate.length + toInsert.length;
     } catch (error) {
       if (import.meta.env.DEV) console.error('Bulk set budgets error:', error);
-      toast.error('Error al aplicar el presupuesto sugerido');
+      toast.error(tr('stores.budgets.applySuggestedError'));
       return 0;
     }
   },

@@ -12,6 +12,7 @@ import { todayISO } from '../utils/formatters';
 import { advanceDate } from '../utils/recurrence';
 import useTransactionStore from './useTransactionStore';
 import { getCurrency } from '../utils/currencyRuntime';
+import { tr } from '../i18n/runtime';
 
 // Re-export para que los consumidores que ya lo importan desde aquí sigan funcionando.
 export { advanceDate };
@@ -85,7 +86,7 @@ const useRecurringStore = create(
           .single();
         if (error) {
           if (import.meta.env.DEV) console.error('Recurring insert error:', error);
-          toast.error('Error al crear la recurrencia');
+          toast.error(tr('stores.recurring.createError'));
           return;
         }
         set((state) => ({ recurring: [...state.recurring, mapFromDb(data)] }));

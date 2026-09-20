@@ -4,6 +4,7 @@ import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { todayISO } from '../utils/formatters';
 import useSavingsStore from './useSavingsStore';
+import { tr } from '../i18n/runtime';
 
 const mapFromDb = (c) => ({
   id: c.id,
@@ -43,7 +44,7 @@ const useCreditCardStore = create(
           set({ cards: data.map(mapFromDb), loading: false });
         } else {
           if (import.meta.env.DEV) console.error('Error fetching cards:', error);
-          toast.error('No se pudieron cargar las tarjetas');
+          toast.error(tr('stores.cards.loadError'));
           set({ loading: false });
         }
       },
@@ -67,11 +68,11 @@ const useCreditCardStore = create(
         const { data, error } = await supabase.from('credit_cards').insert(payload).select().single();
         if (error) {
           if (import.meta.env.DEV) console.error('Card insert error:', error);
-          toast.error('Error al guardar la tarjeta');
+          toast.error(tr('stores.cards.saveError'));
           return;
         }
         set((state) => ({ cards: [...state.cards, mapFromDb(data)] }));
-        toast.success('Tarjeta guardada');
+        toast.success(tr('stores.cards.saved'));
       },
 
       updateCard: async (id, updates) => {
@@ -88,13 +89,13 @@ const useCreditCardStore = create(
         const { error } = await supabase.from('credit_cards').update(dbUpdates).eq('id', id);
         if (error) {
           if (import.meta.env.DEV) console.error('Card update error:', error);
-          toast.error('Error al actualizar la tarjeta');
+          toast.error(tr('stores.cards.updateError'));
           return;
         }
         set((state) => ({
           cards: state.cards.map((c) => (c.id === id ? { ...c, ...updates } : c)),
         }));
-        toast.success('Tarjeta actualizada');
+        toast.success(tr('stores.cards.updated'));
       },
 
       deleteCard: async (id) => {
@@ -124,13 +125,13 @@ const useCreditCardStore = create(
         const { error } = await supabase.from('credit_cards').update({ payments: newPayments }).eq('id', cardId);
         if (error) {
           if (import.meta.env.DEV) console.error('Add card payment error:', error);
-          toast.error('Error al registrar el abono');
+          toast.error(tr('stores.cards.paymentError'));
           return;
         }
         set((state) => ({
           cards: state.cards.map((c) => (c.id === cardId ? { ...c, payments: newPayments } : c)),
         }));
-        toast.success('Abono registrado');
+        toast.success(tr('stores.cards.paymentSaved'));
       },
 
       // Pago de tarjeta con cascada (cuenta real). Si savingsPick no es null, retira
@@ -158,13 +159,13 @@ const useCreditCardStore = create(
         const { error } = await supabase.from('credit_cards').update({ payments: newPayments }).eq('id', cardId);
         if (error) {
           if (import.meta.env.DEV) console.error('Delete card payment error:', error);
-          toast.error('Error al eliminar el abono');
+          toast.error(tr('stores.cards.paymentDeleteError'));
           return;
         }
         set((state) => ({
           cards: state.cards.map((c) => (c.id === cardId ? { ...c, payments: newPayments } : c)),
         }));
-        toast.success('Abono eliminado');
+        toast.success(tr('stores.cards.paymentDeleted'));
       },
     }),
     {

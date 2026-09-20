@@ -118,7 +118,7 @@ export const AuthProvider = ({ children }) => {
     // La limpieza de datos (stores en memoria + caché de sessionStorage +
     // moneda runtime) corre en el handler del evento SIGNED_OUT, que también
     // cubre expiración de token y cierre desde otra pestaña.
-    toast.success('Sesión cerrada');
+    toast.success(tr('stores.auth.signedOut'));
   };
 
   const resetPassword = async (email) => {
