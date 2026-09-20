@@ -6,6 +6,11 @@ import useCategoryStore from './useCategoryStore';
 import useTransactionStore from './useTransactionStore';
 import { getCurrency } from '../utils/currencyRuntime';
 import { tr } from '../i18n/runtime';
+import { isDemoActive } from '../stitch/demoMode';
+
+// Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
+const localId = () =>
+  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 // Resuelve una categoría de tipo ahorro para enlazar la transacción del aporte.
 // Cae a '' si la cuenta no tiene una categoría savings (la tx sigue type:savings).
@@ -23,6 +28,7 @@ const useSavingsStore = create(
   loading: false,
 
   fetchGoals: async () => {
+    if (isDemoActive()) return; // demo: los datos los siembra demoMode
     set({ loading: true });
     const user = await getCurrentUser();
     if (!user) return set({ goals: [], contributions: [], loading: false });
@@ -136,11 +142,13 @@ const useSavingsStore = create(
     if (updates.horizon !== undefined) dbUpdates.horizon = updates.horizon || null;
     dbUpdates.status = newStatus;
 
-    const { error } = await supabase.from('savings').update(dbUpdates).eq('id', id);
-    if (error) {
-      if (import.meta.env.DEV) console.error('Error updating saving goal', error);
-      toast.error(tr('stores.savings.updateError'));
-      return false;
+    if (!isDemoActive()) {
+      const { error } = await supabase.from('savings').update(dbUpdates).eq('id', id);
+      if (error) {
+        if (import.meta.env.DEV) console.error('Error updating saving goal', error);
+        toast.error(tr('stores.savings.updateError'));
+        return false;
+      }
     }
     set((state) => ({
       goals: state.goals.map((g) => (g.id === id ? { ...g, ...updates, currentAmount: newCurrent, targetAmount: newTarget, status: newStatus } : g)),
@@ -167,25 +175,36 @@ const useSavingsStore = create(
   // la meta y crea la transacción de ahorro enlazada (transaction_id), espejo de
   // addPayment en useDebtStore.
   addContribution: async (goalId, amount, date, notes = '') => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
     const goal = get().goals.find((g) => g.id === goalId);
     if (!goal) return;
 
     const value = Number(amount);
-    const contribPayload = {
-      user_id: user.id,
-      goal_id: goalId,
-      amount: value,
-      date,
-      notes: notes || null,
-    };
-    const { data: contribData, error: contribErr } = await supabase
-      .from('savings_contributions').insert(contribPayload).select().single();
-    if (contribErr) {
-      if (import.meta.env.DEV) console.error('Error adding contribution', contribErr);
-      toast.error(tr('stores.savings.contributionError'));
-      return;
+
+    // En demo la fila se crea en memoria con un id local; con sesión la inserta
+    // Postgres y devuelve la fila. De aquí en adelante el flujo es el mismo:
+    // sube el saldo de la meta y enlaza la transacción de ahorro.
+    let contribData;
+    if (demo) {
+      contribData = { id: localId(), notes: notes || null, created_at: new Date().toISOString() };
+    } else {
+      const contribPayload = {
+        user_id: user.id,
+        goal_id: goalId,
+        amount: value,
+        date,
+        notes: notes || null,
+      };
+      const { data, error: contribErr } = await supabase
+        .from('savings_contributions').insert(contribPayload).select().single();
+      if (contribErr) {
+        if (import.meta.env.DEV) console.error('Error adding contribution', contribErr);
+        toast.error(tr('stores.savings.contributionError'));
+        return;
+      }
+      contribData = data;
     }
 
     // Sube el saldo de la meta (vía updateGoal, que recalcula status).
@@ -211,7 +230,9 @@ const useSavingsStore = create(
         notes: notes || 'Generado automáticamente desde Ahorros',
       });
       if (txId) {
-        await supabase.from('savings_contributions').update({ transaction_id: txId }).eq('id', contribData.id);
+        if (!isDemoActive()) {
+          await supabase.from('savings_contributions').update({ transaction_id: txId }).eq('id', contribData.id);
+        }
         set((state) => ({
           contributions: state.contributions.map((c) => (c.id === contribData.id ? { ...c, transactionId: txId } : c)),
         }));
@@ -241,11 +262,13 @@ const useSavingsStore = create(
       }
     }
 
-    const { error } = await supabase.from('savings_contributions').delete().eq('id', id);
-    if (error) {
-      if (import.meta.env.DEV) console.error('Error deleting contribution', error);
-      toast.error(tr('stores.savings.deleteContributionError'));
-      return { ok: false };
+    if (!isDemoActive()) {
+      const { error } = await supabase.from('savings_contributions').delete().eq('id', id);
+      if (error) {
+        if (import.meta.env.DEV) console.error('Error deleting contribution', error);
+        toast.error(tr('stores.savings.deleteContributionError'));
+        return { ok: false };
+      }
     }
 
     if (contrib.transactionId) {

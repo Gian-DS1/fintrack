@@ -6,6 +6,11 @@ import useCreditCardStore from './useCreditCardStore';
 import { computeCashback } from '../utils/creditCards';
 import { getCurrency } from '../utils/currencyRuntime';
 import { tr } from '../i18n/runtime';
+import { isDemoActive } from '../stitch/demoMode';
+
+// Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
+const localId = () =>
+  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 // El cashback aplica a CUALQUIER tipo de gasto (fijo o variable), no solo al
 // tipo genérico 'expense'. Misma regla que el formulario de transacciones.
@@ -18,6 +23,7 @@ const useTransactionStore = create(
   loading: false,
 
   fetchTransactions: async () => {
+    if (isDemoActive()) return; // demo: los datos los siembra demoMode
     set({ loading: true });
     const user = await getCurrentUser();
     if (!user) {
@@ -49,8 +55,9 @@ const useTransactionStore = create(
   },
 
   addTransaction: async (transaction) => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
 
     let amount = Number(transaction.amount);
     let notes = transaction.notes || null;
@@ -60,6 +67,25 @@ const useTransactionStore = create(
     if (transaction.cardId && earnsCashback(transaction.type)) {
       const card = useCreditCardStore.getState().cards.find((c) => c.id === transaction.cardId);
       cashbackEarned = computeCashback(card, transaction.categoryId, amount);
+    }
+
+    if (demo) {
+      const row = {
+        id: localId(),
+        categoryId: transaction.categoryId || '',
+        cardId: transaction.cardId || null,
+        amount,
+        type: transaction.type,
+        description: transaction.description || '',
+        date: transaction.date,
+        notes,
+        currency: transaction.currency || getCurrency(),
+        cashbackEarned,
+        createdAt: new Date().toISOString(),
+      };
+      set((state) => ({ transactions: [row, ...state.transactions] }));
+      toast.success(tr('stores.transactions.saved'));
+      return row.id;
     }
 
     const dbTx = {
@@ -78,7 +104,7 @@ const useTransactionStore = create(
     const { data, error } = await supabase.from('transactions').insert(dbTx).select().single();
     if (error) {
       if (import.meta.env.DEV) console.error("Transaction insert error:", error);
-      toast.error("Error al guardar: " + error.message);
+      toast.error(tr('stores.transactions.saveError') + error.message);
       return null;
     }
 
@@ -91,7 +117,7 @@ const useTransactionStore = create(
         createdAt: data.created_at
       };
       set((state) => ({ transactions: [newTx, ...state.transactions] }));
-      toast.success("Transacción guardada exitosamente");
+      toast.success(tr('stores.transactions.saved'));
       // Devuelve el id de la fila creada para que quien la origina (p. ej. un
       // pago de deuda) pueda enlazarla y revertirla luego.
       return data.id;
@@ -103,6 +129,10 @@ const useTransactionStore = create(
   // un pago de deuda enlazado). Devuelve true/false.
   deleteTransactionSilent: async (id) => {
     if (!id) return false;
+    if (isDemoActive()) {
+      set((state) => ({ transactions: state.transactions.filter((t) => t.id !== id) }));
+      return true;
+    }
     const { error } = await supabase.from('transactions').delete().eq('id', id);
     if (error) {
       if (import.meta.env.DEV) console.error('Silent transaction delete error:', error);

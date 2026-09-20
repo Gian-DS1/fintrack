@@ -3,7 +3,6 @@
 // con deshacer.
 import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
-import { isDemoActive, demoDeleteCardPayment, demoAddCardPayment } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import { tr } from '../../../i18n/runtime';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
@@ -16,14 +15,13 @@ const fmt = (n) => formatCurrency(n);
 export default function HistoryModal({ card, transactions, onClose }) {
   const { t } = useI18n();
   const { addCardPayment, deleteCardPayment } = useCreditCardStore();
-  const demo = isDemoActive();
   const payments = [...(card.payments || [])].sort((a, b) => (a.date < b.date ? 1 : -1));
   const cashback = getLifetimeCashback(card, transactions);
 
   const onDelete = (p) => {
-    if (demo) demoDeleteCardPayment(card.id, p.id); else deleteCardPayment(card.id, p.id);
+    deleteCardPayment(card.id, p.id);
     toastUndo(tr('screens.cards.paymentDeleted'), () => {
-      if (demo) demoAddCardPayment(card.id, p); else addCardPayment(card.id, p);
+      addCardPayment(card.id, p);
     });
   };
 

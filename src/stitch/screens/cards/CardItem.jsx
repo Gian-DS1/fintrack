@@ -6,7 +6,6 @@ import MS from '../../MS';
 import { toastCelebrate } from '../../toastCelebrate';
 import { Stagger } from '../../StitchMotion';
 import { useI18n } from '../../../contexts/I18nContext';
-import { isDemoActive, demoAddCardPayment } from '../../demoMode';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import { getCardBalances, getLifetimeCashback, getDerivedCashback, hasTieredRule } from '../../../utils/creditCards';
 import { formatCurrency, formatDate, todayISO } from '../../../utils/formatters';
@@ -27,8 +26,8 @@ export default function CardItem({ card, transactions, onPay, onHistory, onEdit,
     const amt = Math.round(bal.pendingBilled * 100) / 100;
     if (amt <= 0) return;
     const payload = { amount: amt, date: todayISO(), note: t('screens.cards.fullPaymentNote') };
-    if (isDemoActive()) { demoAddCardPayment(card.id, payload); toastCelebrate(t('creditCards.amountPaid')); }
-    else await addCardPayment(card.id, payload);
+    await addCardPayment(card.id, payload);
+    toastCelebrate(t('creditCards.amountPaid'));
   };
 
   return (

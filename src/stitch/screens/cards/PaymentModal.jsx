@@ -4,7 +4,6 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import StitchCurrencyInput from '../../StitchCurrencyInput';
 import StitchDatePicker from '../../StitchDatePicker';
-import { isDemoActive, demoAddCardPayment, applyCardPaymentWithCascade } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useSavingsStore from '../../../stores/useSavingsStore';
@@ -39,14 +38,8 @@ export default function PaymentModal({ card, transactions, onClose }) {
 
   const applyPayment = (amt, savingsPick) => {
     const payload = { amount: amt, date, note: note.trim() };
-    if (isDemoActive()) {
-      if (savingsPick) applyCardPaymentWithCascade(card.id, payload, savingsPick);
-      else demoAddCardPayment(card.id, payload);
-      toast.success(t('screens.cards.paymentRegistered'));
-    } else {
-      if (savingsPick) addCardPaymentWithCascade(card.id, payload, savingsPick);
-      else addCardPayment(card.id, payload);
-    }
+    if (savingsPick) addCardPaymentWithCascade(card.id, payload, savingsPick);
+    else addCardPayment(card.id, payload);
     // ¿Este abono SALDÓ un estado de cuenta que estaba pendiente?
     if (bal.pendingBilled > 0.01 && amt + bal.paid >= bal.billed - 0.01) {
       toastCelebrate(t('creditCards.amountPaid'));

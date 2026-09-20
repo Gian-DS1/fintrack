@@ -7,7 +7,7 @@ import toast from 'react-hot-toast';
 import MS from '../../MS';
 import StitchSelect from '../../StitchSelect';
 import StitchCurrencyInput from '../../StitchCurrencyInput';
-import { isDemoActive, demoAddCard, demoUpdateCard } from '../../demoMode';
+import { isDemoActive } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useCategoryStore from '../../../stores/useCategoryStore';
@@ -76,13 +76,8 @@ export default function CardForm({ editing, onClose }) {
     const cashbackRules = normalizeCashbackRules(form.cashbackRules);
     const payload = { name: form.name, bank: form.bank, cutoffDay, dueDay, color: form.color, openingBalance: Number(form.openingBalance) || 0, cashbackRules, catalogId: form.catalogId || null };
 
-    if (editing) {
-      if (demo) { demoUpdateCard(editing.id, payload); toast.success(t('screens.cards.cardUpdated')); }
-      else await updateCard(editing.id, payload);
-    } else {
-      if (demo) { demoAddCard(payload); toast.success(t('screens.cards.cardSaved')); }
-      else await addCard(payload);
-    }
+    if (editing) await updateCard(editing.id, payload);
+    else await addCard(payload);
     onClose();
   };
 

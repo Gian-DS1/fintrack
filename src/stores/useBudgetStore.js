@@ -132,7 +132,7 @@ const useBudgetStore = create(
         });
 
         // Trigger a subtle success toast indicating the change has been successfully saved
-        toast.success("Presupuesto guardado");
+        toast.success(tr('stores.budgets.saved'));
       } else {
         throw error || new Error("Error en la respuesta de Supabase");
       }
@@ -140,7 +140,7 @@ const useBudgetStore = create(
       if (import.meta.env.DEV) console.error("Budget save error:", error);
       // Rollback to previous state on failure
       set({ budgets: previousBudgets });
-      toast.error("Error guardando presupuesto");
+      toast.error(tr('stores.budgets.saveError'));
     }
   },
 

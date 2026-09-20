@@ -909,6 +909,8 @@ const translations = {
       budgets: {
         loadError: 'No se pudieron cargar los presupuestos',
         applySuggestedError: 'Error al aplicar el presupuesto sugerido',
+        saved: 'Presupuesto guardado',
+        saveError: 'Error guardando presupuesto',
       },
       budgetGroups: {
         createError: 'No se pudo crear el grupo (puede faltar una migración de la base de datos)',
@@ -947,6 +949,8 @@ const translations = {
       },
       transactions: {
         loadError: 'No se pudieron cargar las transacciones',
+        saved: 'Transacción guardada exitosamente',
+        saveError: 'Error al guardar: ',
         updateError: 'Error al actualizar: ',
         updated: 'Transacción actualizada',
         deleteError: 'Error al eliminar: ',
@@ -1925,6 +1929,8 @@ const translations = {
       budgets: {
         loadError: 'Could not load budgets',
         applySuggestedError: 'Error applying the suggested budget',
+        saved: 'Budget saved',
+        saveError: 'Error saving the budget',
       },
       budgetGroups: {
         createError: 'Could not create the group (a database migration may be missing)',
@@ -1963,6 +1969,8 @@ const translations = {
       },
       transactions: {
         loadError: 'Could not load transactions',
+        saved: 'Transaction saved successfully',
+        saveError: 'Error saving: ',
         updateError: 'Error updating: ',
         updated: 'Transaction updated',
         deleteError: 'Error deleting: ',

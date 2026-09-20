@@ -6,7 +6,6 @@ import MS from '../MS';
 import { Stagger } from '../StitchMotion';
 import useCreditCardStore from '../../stores/useCreditCardStore';
 import useTransactionStore from '../../stores/useTransactionStore';
-import { isDemoActive, demoDeleteCard, demoRestoreCard } from '../demoMode';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
 import CardItem from './cards/CardItem';
@@ -28,9 +27,9 @@ export default function StitchCards({ embedded = false }) {
   const openEdit = (c) => { setEditing(c); setShowForm(true); };
 
   const onDelete = (card) => {
-    if (isDemoActive()) demoDeleteCard(card.id); else deleteCard(card.id);
+    deleteCard(card.id);
     toastUndo(tr('screens.cards.cardDeleted'), () => {
-      if (isDemoActive()) demoRestoreCard(card); else addCard(card);
+      addCard(card);
     });
   };
 
