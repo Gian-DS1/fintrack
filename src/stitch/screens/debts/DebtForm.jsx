@@ -1,10 +1,9 @@
-// Modal de crear/editar deuda. Inputs Stitch + demo branching.
+// Modal de crear/editar deuda. Inputs Stitch.
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import StitchCurrencyInput from '../../StitchCurrencyInput';
 import StitchDatePicker from '../../StitchDatePicker';
 import useDebtStore from '../../../stores/useDebtStore';
-import { isDemoActive, demoAddDebt, demoUpdateDebt } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import { Modal, Field, FormActions, inputCls } from '../../formUi';
 
@@ -15,7 +14,6 @@ const pctCls = 'w-full bg-surface-container-lowest border border-border-subtle r
 export default function DebtForm({ editing, onClose }) {
   const { t } = useI18n();
   const { addDebt, updateDebt } = useDebtStore();
-  const demo = isDemoActive();
 
   const [form, setForm] = useState(editing
     ? {
@@ -39,11 +37,11 @@ export default function DebtForm({ editing, onClose }) {
       monthlyPayment: Number(form.monthlyPayment) || 0, dueDate: form.dueDate || null,
     };
     if (editing) {
-      if (demo) { demoUpdateDebt(editing.id, data); toast.success(t('screens.debts.debtUpdated')); }
-      else { await updateDebt(editing.id, data); toast.success(t('screens.debts.debtUpdated')); }
+      await updateDebt(editing.id, data);
+      toast.success(t('screens.debts.debtUpdated'));
     } else {
-      if (demo) { demoAddDebt(data); toast.success(t('screens.debts.debtRegistered')); }
-      else { await addDebt(data); toast.success(t('screens.debts.debtRegistered')); }
+      await addDebt(data);
+      toast.success(t('screens.debts.debtRegistered'));
     }
     onClose();
   };

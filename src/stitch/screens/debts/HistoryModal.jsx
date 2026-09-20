@@ -1,11 +1,10 @@
 // Historial de pagos de una deuda: resumen (total pagado + proyección de payoff)
 // y lista de pagos con borrar + Deshacer. El borrado revierte saldo y la
-// transacción enlazada (vía deletePayment del store / mutador demo).
+// transacción enlazada (vía deletePayment del store).
 import toast from 'react-hot-toast';
 import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
 import useDebtStore from '../../../stores/useDebtStore';
-import { isDemoActive, demoDeleteDebtPayment, demoAddDebtPayment } from '../../demoMode';
 import { formatCurrency, formatDate, toISODate } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { tr } from '../../../i18n/runtime';
@@ -17,7 +16,6 @@ const fmt = (n, c) => formatCurrency(n, c);
 export default function HistoryModal({ debt: debtProp, onClose }) {
   const { t } = useI18n();
   const { debts, payments, addPayment, deletePayment, restorePayment } = useDebtStore();
-  const demo = isDemoActive();
 
   // Lee la deuda VIVA del store (su saldo cambia al borrar pagos dentro del modal).
   const debt = debts.find((d) => d.id === debtProp.id) || debtProp;
@@ -29,16 +27,11 @@ export default function HistoryModal({ debt: debtProp, onClose }) {
   const payoff = getPayoff(debt);
 
   const onDelete = async (p) => {
-    if (demo) {
-      demoDeleteDebtPayment(p.id);
-    } else {
-      const res = await deletePayment(p.id);
-      if (!res?.ok) return;
-      if (res.hadTransactionLink === false) toast(tr('screens.debts.balanceRevertedNoLink'), { duration: 5000 });
-    }
+    const res = await deletePayment(p.id);
+    if (!res?.ok) return;
+    if (res.hadTransactionLink === false) toast(tr('screens.debts.balanceRevertedNoLink'), { duration: 5000 });
     toastUndo(tr('screens.debts.paymentDeleted'), () => {
-      if (demo) demoAddDebtPayment(p.debtId, p.amount, p.date, p.notes || '');
-      else if (restorePayment) restorePayment(p); else addPayment(p.debtId, p.amount, p.date, p.notes || '');
+      if (restorePayment) restorePayment(p); else addPayment(p.debtId, p.amount, p.date, p.notes || '');
     });
   };
 

@@ -6,7 +6,6 @@ import MS from '../MS';
 import { Stagger } from '../StitchMotion';
 import CountUp from '../CountUp';
 import useDebtStore from '../../stores/useDebtStore';
-import { isDemoActive, demoDeleteDebt, demoRestoreDebt } from '../demoMode';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
 import { formatCurrency } from '../../utils/formatters';
@@ -40,15 +39,11 @@ export default function StitchDebts({ embedded = false }) {
   const onDelete = async (debt) => {
     // Capturar los pagos antes de borrar para poder restaurar todo en Deshacer.
     const debtPayments = payments.filter((p) => p.debtId === debt.id);
-    if (isDemoActive()) demoDeleteDebt(debt.id); else await deleteDebt(debt.id);
+    await deleteDebt(debt.id);
     toastUndo(tr('screens.debts.debtDeleted'), async () => {
-      if (isDemoActive()) {
-        demoRestoreDebt(debt, debtPayments);
-      } else {
-        await addDebt(debt);
-        // Re-aplica los pagos (recrea sus transacciones enlazadas).
-        for (const p of debtPayments) await restorePayment(p);
-      }
+      await addDebt(debt);
+      // Re-aplica los pagos (recrea sus transacciones enlazadas).
+      for (const p of debtPayments) await restorePayment(p);
     });
   };
 
