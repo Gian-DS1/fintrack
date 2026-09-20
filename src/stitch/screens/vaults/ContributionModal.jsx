@@ -5,7 +5,6 @@ import toast from 'react-hot-toast';
 import StitchCurrencyInput from '../../StitchCurrencyInput';
 import StitchDatePicker from '../../StitchDatePicker';
 import useSavingsStore from '../../../stores/useSavingsStore';
-import { isDemoActive, demoAddContribution } from '../../demoMode';
 import { todayISO, formatCurrency } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { toastCelebrate } from '../../toastCelebrate';
@@ -24,8 +23,7 @@ export default function ContributionModal({ goal, onClose }) {
     e.preventDefault();
     const amt = Number(amount);
     if (!amt || amt <= 0) return;
-    if (isDemoActive()) demoAddContribution(goal.id, amt, date, note.trim());
-    else await addContribution(goal.id, amt, date, note.trim());
+    await addContribution(goal.id, amt, date, note.trim());
     const done = Number(goal.currentAmount) + amt >= Number(goal.targetAmount);
     if (done) toastCelebrate(t('screens.vaults.goalCompletedCelebrate'));
     else toast.success(t('screens.vaults.contributionRegistered').replace('{amt}', fmt(amt, goal.currency)), { duration: 4000 });

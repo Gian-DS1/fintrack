@@ -76,8 +76,30 @@ const useSavingsStore = create(
   },
 
   addGoal: async (goal) => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
+
+    if (demo) {
+      // Conserva el id recibido para que el Deshacer restaure la meta original.
+      const current = Number(goal.currentAmount) || 0;
+      const formatted = {
+        id: goal.id || localId(),
+        title: goal.title,
+        targetAmount: Number(goal.targetAmount),
+        currentAmount: current,
+        monthlyContribution: Number(goal.monthlyContribution) || 0,
+        deadline: goal.deadline || null,
+        icon: goal.icon || null,
+        color: goal.color || null,
+        status: goal.status || (current >= Number(goal.targetAmount) ? 'completed' : 'active'),
+        currency: goal.currency || getCurrency(),
+        horizon: goal.horizon || null,
+        createdAt: goal.createdAt || new Date().toISOString(),
+      };
+      set((state) => ({ goals: [...state.goals, formatted] }));
+      return formatted;
+    }
 
     const dbPayload = {
       user_id: user.id,
@@ -161,14 +183,17 @@ const useSavingsStore = create(
     // enlazadas de esos aportes se borran explícitamente (igual que en demo y
     // simétrico con restoreGoalWithContributions, que las recrea).
     const txIds = get().contributions.filter((c) => c.goalId === id && c.transactionId).map((c) => c.transactionId);
-    const { error } = await supabase.from('savings').delete().eq('id', id);
-    if (!error) {
-      for (const txId of txIds) await useTransactionStore.getState().deleteTransactionSilent(txId);
-      set((state) => ({
-        goals: state.goals.filter((g) => g.id !== id),
-        contributions: state.contributions.filter((c) => c.goalId !== id),
-      }));
+
+    if (!isDemoActive()) {
+      const { error } = await supabase.from('savings').delete().eq('id', id);
+      if (error) return;
     }
+
+    for (const txId of txIds) await useTransactionStore.getState().deleteTransactionSilent(txId);
+    set((state) => ({
+      goals: state.goals.filter((g) => g.id !== id),
+      contributions: state.contributions.filter((c) => c.goalId !== id),
+    }));
   },
 
   // Registra un aporte: inserta fila en savings_contributions, suma al saldo de
@@ -286,16 +311,19 @@ const useSavingsStore = create(
     return true;
   },
 
-  // Restaura una meta eliminada CON sus aportes (Deshacer del shell), espejo de
-  // demoRestoreGoal en PROD. Recrea la meta a su saldo ORIGINAL exacto (sin
-  // re-sumar) e inserta las filas de aporte tal cual, recreando su transacción
-  // enlazada. NO usa addGoal/addContribution para evitar el doble-conteo del saldo.
+  // Restaura una meta eliminada CON sus aportes (Deshacer del shell). Recrea la
+  // meta a su saldo ORIGINAL exacto (sin re-sumar) e inserta las filas de aporte
+  // tal cual, recreando su transacción enlazada. NO usa addGoal/addContribution
+  // para evitar el doble-conteo del saldo.
   restoreGoalWithContributions: async (goal, contribs = []) => {
-    const user = await getCurrentUser();
-    if (!user) return;
+    const demo = isDemoActive();
+    const user = demo ? null : await getCurrentUser();
+    if (!demo && !user) return;
 
+    // `user` es null en demo; el payload se arma igual porque la rama demo
+    // reusa sus campos para construir la fila local (user_id se descarta).
     const dbPayload = {
-      user_id: user.id,
+      user_id: user?.id,
       title: goal.title,
       target_amount: Number(goal.targetAmount),
       current_amount: Number(goal.currentAmount),
@@ -308,11 +336,32 @@ const useSavingsStore = create(
       status: goal.status || ((Number(goal.currentAmount) || 0) >= Number(goal.targetAmount) ? 'completed' : 'active'),
     };
 
-    const { data: goalData, error: goalErr } = await supabase.from('savings').insert(dbPayload).select().single();
-    if (goalErr || !goalData) {
-      if (import.meta.env.DEV) console.error('Error restoring saving goal', goalErr);
-      toast.error(tr('stores.savings.restoreError'));
-      return;
+    let goalData;
+    if (demo) {
+      // Reinserta la meta con su id original: el Deshacer debe devolver la
+      // misma fila, no crear una nueva.
+      goalData = {
+        id: goal.id || localId(),
+        title: dbPayload.title,
+        target_amount: dbPayload.target_amount,
+        current_amount: dbPayload.current_amount,
+        monthly_contribution: dbPayload.monthly_contribution,
+        deadline: dbPayload.deadline,
+        icon: dbPayload.icon,
+        color: dbPayload.color,
+        currency: dbPayload.currency,
+        horizon: dbPayload.horizon,
+        status: dbPayload.status,
+        created_at: goal.createdAt || new Date().toISOString(),
+      };
+    } else {
+      const { data, error: goalErr } = await supabase.from('savings').insert(dbPayload).select().single();
+      if (goalErr || !data) {
+        if (import.meta.env.DEV) console.error('Error restoring saving goal', goalErr);
+        toast.error(tr('stores.savings.restoreError'));
+        return;
+      }
+      goalData = data;
     }
     const formatted = {
       id: goalData.id,
@@ -333,18 +382,24 @@ const useSavingsStore = create(
 
     for (const c of contribs) {
       try {
-        const contribPayload = {
-          user_id: user.id,
-          goal_id: newGoalId,
-          amount: Number(c.amount),
-          date: c.date,
-          notes: c.notes || null,
-        };
-        const { data: contribData, error: contribErr } = await supabase
-          .from('savings_contributions').insert(contribPayload).select().single();
-        if (contribErr || !contribData) {
-          if (import.meta.env.DEV) console.error('Error restoring contribution', contribErr);
-          continue;
+        let contribData;
+        if (demo) {
+          contribData = { id: c.id || localId(), notes: c.notes || null, created_at: new Date().toISOString() };
+        } else {
+          const contribPayload = {
+            user_id: user.id,
+            goal_id: newGoalId,
+            amount: Number(c.amount),
+            date: c.date,
+            notes: c.notes || null,
+          };
+          const { data, error: contribErr } = await supabase
+            .from('savings_contributions').insert(contribPayload).select().single();
+          if (contribErr || !data) {
+            if (import.meta.env.DEV) console.error('Error restoring contribution', contribErr);
+            continue;
+          }
+          contribData = data;
         }
 
         let txId = null;
@@ -362,7 +417,7 @@ const useSavingsStore = create(
           if (import.meta.env.DEV) console.error('Error recreating linked transaction on restore:', err);
         }
 
-        if (txId) {
+        if (txId && !demo) {
           await supabase.from('savings_contributions').update({ transaction_id: txId }).eq('id', contribData.id);
         }
         set((state) => ({

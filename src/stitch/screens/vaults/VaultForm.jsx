@@ -1,4 +1,4 @@
-// Modal de crear/editar meta. Inputs Stitch + demo branching. El saldo inicial
+// Modal de crear/editar meta. Inputs Stitch. El saldo inicial
 // solo se declara al CREAR (al editar el saldo cambia vía aportes).
 import { useState } from 'react';
 import toast from 'react-hot-toast';
@@ -7,7 +7,6 @@ import StitchCurrencyInput from '../../StitchCurrencyInput';
 import StitchSelect from '../../StitchSelect';
 import StitchDatePicker from '../../StitchDatePicker';
 import useSavingsStore from '../../../stores/useSavingsStore';
-import { isDemoActive, demoAddGoal, demoUpdateGoal } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import { getHorizonFormOptions } from './horizons';
@@ -17,7 +16,6 @@ const blank = { title: '', targetAmount: '', currentAmount: '', monthlyContribut
 export default function VaultForm({ editing, onClose }) {
   const { t } = useI18n();
   const { addGoal, updateGoal } = useSavingsStore();
-  const demo = isDemoActive();
 
   const [form, setForm] = useState(editing
     ? {
@@ -46,12 +44,11 @@ export default function VaultForm({ editing, onClose }) {
       horizon: form.horizon || null,
     };
     if (editing) {
-      if (demo) { demoUpdateGoal(editing.id, data); toast.success(t('screens.vaults.goalUpdated')); }
-      else { await updateGoal(editing.id, data); toast.success(t('screens.vaults.goalUpdated')); }
+      await updateGoal(editing.id, data);
+      toast.success(t('screens.vaults.goalUpdated'));
     } else {
-      const createData = { ...data, currentAmount: Number(form.currentAmount) || 0 };
-      if (demo) { demoAddGoal(createData); toast.success(t('screens.vaults.goalCreated')); }
-      else { await addGoal(createData); toast.success(t('screens.vaults.goalCreated')); }
+      await addGoal({ ...data, currentAmount: Number(form.currentAmount) || 0 });
+      toast.success(t('screens.vaults.goalCreated'));
     }
     onClose();
   };

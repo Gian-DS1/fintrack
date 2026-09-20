@@ -9,7 +9,6 @@ import StitchSelect from '../StitchSelect';
 import CountUp from '../CountUp';
 import useSavingsStore from '../../stores/useSavingsStore';
 import { getHorizonFilterOptions } from './vaults/horizons';
-import { isDemoActive, demoDeleteGoal, demoRestoreGoal } from '../demoMode';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
 import { formatCurrency } from '../../utils/formatters';
@@ -45,13 +44,9 @@ export default function StitchVaults({ embedded = false }) {
   const onDelete = async (goal) => {
     // Captura los aportes antes de borrar para restaurarlos en el Deshacer.
     const goalContribs = contributions.filter((c) => c.goalId === goal.id);
-    if (isDemoActive()) demoDeleteGoal(goal.id); else await deleteGoal(goal.id);
+    await deleteGoal(goal.id);
     toastUndo(tr('screens.vaults.goalDeleted'), async () => {
-      if (isDemoActive()) {
-        demoRestoreGoal(goal, goalContribs);
-      } else {
-        await restoreGoalWithContributions(goal, goalContribs);
-      }
+      await restoreGoalWithContributions(goal, goalContribs);
     });
   };
 
