@@ -9,7 +9,7 @@ import { isDemoActive, demoAddContribution } from '../../demoMode';
 import { todayISO, formatCurrency } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { toastCelebrate } from '../../toastCelebrate';
-import { Modal, Field, FormActions, inputCls } from './vaultsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 
 const fmt = (n, c) => formatCurrency(n, c);
 

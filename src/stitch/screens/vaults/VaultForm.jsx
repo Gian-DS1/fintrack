@@ -9,7 +9,7 @@ import StitchDatePicker from '../../StitchDatePicker';
 import useSavingsStore from '../../../stores/useSavingsStore';
 import { isDemoActive, demoAddGoal, demoUpdateGoal } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
-import { Modal, Field, FormActions, inputCls } from './vaultsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import { getHorizonFormOptions } from './horizons';
 
 const blank = { title: '', targetAmount: '', currentAmount: '', monthlyContribution: '', deadline: '', icon: '🎯', color: '#bec2ff', horizon: '' };

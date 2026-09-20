@@ -9,7 +9,7 @@ import { tr } from '../../../i18n/runtime';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import { getLifetimeCashback } from '../../../utils/creditCards';
 import { formatCurrency, formatDate } from '../../../utils/formatters';
-import { Modal } from './cardsUi';
+import { Modal } from '../../formUi';
 
 const fmt = (n) => formatCurrency(n);
 

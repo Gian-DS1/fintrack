@@ -13,7 +13,7 @@ import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useCategoryStore from '../../../stores/useCategoryStore';
 import { getCatalogBanks, getCatalogCardsByBank, getCatalogCard, resolveCardCashback } from '../../../data/creditCardCatalog';
 import { normalizeCashbackRules } from '../../../utils/creditCards';
-import { Modal, Field, FormActions, inputCls } from './cardsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import CashbackEditor from './CashbackEditor';
 
 const COLORS = ['#bec2ff', '#50d8e9', '#bdd200', '#ffb689', '#ffb4ab', '#9aa0ff', '#e9a0d8'];

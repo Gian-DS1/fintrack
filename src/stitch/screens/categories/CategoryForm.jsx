@@ -8,7 +8,7 @@ import EmojiPicker from '../../EmojiPicker';
 import useCategoryStore from '../../../stores/useCategoryStore';
 import { isDemoActive, demoAddCategory, demoUpdateCategory } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
-import { Modal, Field, FormActions, inputCls } from './categoriesUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 
 const COLORS = ['#bec2ff', '#50d8e9', '#bdd200', '#ffb689', '#ffb4ab', '#9aa0ff', '#e9a0d8'];
 const blank = { name: '', type: 'variable_expense', icon: '🏷️', color: '#bec2ff', keywords: '' };

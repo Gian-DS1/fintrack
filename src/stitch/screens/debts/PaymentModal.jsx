@@ -9,7 +9,7 @@ import { isDemoActive, demoAddDebtPayment, applyDebtPaymentWithCascade } from '.
 import { todayISO, formatCurrency } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { toastCelebrate } from '../../toastCelebrate';
-import { Modal, Field, FormActions, inputCls } from './debtsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import useTransactionStore from '../../../stores/useTransactionStore';
 import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useSavingsStore from '../../../stores/useSavingsStore';

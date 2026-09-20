@@ -9,7 +9,7 @@ import { formatCurrency, formatDate, toISODate } from '../../../utils/formatters
 import { useI18n } from '../../../contexts/I18nContext';
 import { tr } from '../../../i18n/runtime';
 import { getPayoff } from './payoff';
-import { Modal } from './debtsUi';
+import { Modal } from '../../formUi';
 
 const fmt = (n, c) => formatCurrency(n, c);
 

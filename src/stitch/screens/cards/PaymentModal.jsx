@@ -12,7 +12,7 @@ import usePrefsStore from '../../../stores/usePrefsStore';
 import { getCardBalances } from '../../../utils/creditCards';
 import { todayISO, formatCurrency } from '../../../utils/formatters';
 import { toastCelebrate } from '../../toastCelebrate';
-import { Modal, Field, FormActions, inputCls } from './cardsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import { getCashShortfall, canAffordPayment } from '../dashboard/selectors';
 import SavingsPickerModal from '../finances/SavingsPickerModal';
 

@@ -6,7 +6,7 @@ import StitchDatePicker from '../../StitchDatePicker';
 import useDebtStore from '../../../stores/useDebtStore';
 import { isDemoActive, demoAddDebt, demoUpdateDebt } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
-import { Modal, Field, FormActions, inputCls } from './debtsUi';
+import { Modal, Field, FormActions, inputCls } from '../../formUi';
 
 const blank = { creditorName: '', originalAmount: '', currentBalance: '', interestRate: '', monthlyPayment: '', dueDate: '' };
 
