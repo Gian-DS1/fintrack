@@ -15,13 +15,21 @@ import { currencyOptions } from '../../utils/currencyOptions';
 import StitchSelect from '../StitchSelect';
 import StitchCurrencyInput from '../StitchCurrencyInput';
 import StatementImportModal from './StatementImportModal';
-import { demoSetInitialCashBalance } from '../demoMode';
+import { demoSetInitialCashBalance, demoSetRemindersEnabled, demoSetReminderDaysBefore } from '../demoMode';
 import { supabase } from '../../lib/supabase';
 
 export default function StitchSettings() {
   const { t, language } = useI18n();
 
   // Niveles de presupuesto (de más simple a más avanzado).
+  // Presets de antelación del recordatorio. Tres opciones cubren el caso real;
+  // un selector libre de días sería más flexible y bastante menos usable.
+  const REMINDER_PRESETS = [
+    { key: 'remindersDays51', days: [5, 1] },
+    { key: 'remindersDays3', days: [3] },
+    { key: 'remindersDays1', days: [1] },
+  ];
+
   const BUDGET_LEVEL_CARDS = [
     { value: 'tracking', icon: 'visibility', title: t('screens.budget.trackingMode'), desc: t('screens.settings.levelTrackingDesc') },
     { value: '503020', icon: 'pie_chart', title: t('screens.settings.rule503020'), desc: t('screens.settings.level503020Desc') },
@@ -158,6 +166,10 @@ export default function StitchSettings() {
   const setCurrency = usePrefsStore((s) => s.setCurrency);
   const initialCashBalance = usePrefsStore((s) => s.initialCashBalance);
   const setInitialCashBalance = usePrefsStore((s) => s.setInitialCashBalance);
+  const remindersEnabled = usePrefsStore((s) => s.remindersEnabled);
+  const setRemindersEnabled = usePrefsStore((s) => s.setRemindersEnabled);
+  const reminderDaysBefore = usePrefsStore((s) => s.reminderDaysBefore);
+  const setReminderDaysBefore = usePrefsStore((s) => s.setReminderDaysBefore);
 
   // Fix 2: memoizar opciones de moneda; se recalcula sólo si cambia el idioma.
   // Derivamos el locale a partir de `language` (misma lógica que currentLocale())
@@ -261,7 +273,7 @@ export default function StitchSettings() {
 
         {/* Efectivo inicial: base del efectivo líquido del Dashboard. En demo se
             guarda en memoria; con sesión se persiste en profiles. */}
-        <Stagger.Item className="lg:col-span-12 bg-surface-panel border border-border-subtle rounded-lg inner-glow p-lg flex flex-col gap-sm">
+        <Stagger.Item className="lg:col-span-6 bg-surface-panel border border-border-subtle rounded-lg inner-glow p-lg flex flex-col gap-sm">
           <h2 className="font-mono-data text-mono-data text-on-surface-variant border-b border-border-subtle pb-sm">{t('screens.settings.initialCashLabel').toUpperCase()}</h2>
           <div className="max-w-[280px]">
             <StitchCurrencyInput
@@ -270,6 +282,50 @@ export default function StitchSettings() {
             />
           </div>
           <span className="font-label-sm text-label-sm text-text-muted">{t('screens.settings.initialCashHelp')}</span>
+        </Stagger.Item>
+
+        {/* Recordatorios de pago: el cron diario (api/cron/card-reminders) lee
+            estas preferencias de `profiles`. El aviso del día del vencimiento y
+            los de mora van siempre; aquí solo se elige la antelación. */}
+        <Stagger.Item className="lg:col-span-6 bg-surface-panel border border-border-subtle rounded-lg inner-glow p-lg flex flex-col gap-sm">
+          <div className="flex justify-between items-center border-b border-border-subtle pb-sm">
+            <h2 className="font-mono-data text-mono-data text-on-surface-variant">{t('screens.settings.remindersLabel').toUpperCase()}</h2>
+            <MS name="notifications_active" className="text-text-muted text-[16px]" />
+          </div>
+          <button
+            onClick={() => { const v = !remindersEnabled; if (demo) demoSetRemindersEnabled(v); else setRemindersEnabled(v); }}
+            aria-pressed={remindersEnabled}
+            className={`flex items-center gap-md p-md rounded border text-left transition-colors ${remindersEnabled ? 'border-primary bg-primary/10' : 'border-border-subtle hover:bg-surface-container-high'}`}
+          >
+            <span className={`w-9 h-9 rounded flex items-center justify-center shrink-0 ${remindersEnabled ? 'text-primary bg-primary/15' : 'text-text-muted bg-surface-container-high'}`}>
+              <MS name={remindersEnabled ? 'notifications_active' : 'notifications_off'} className="!text-[18px]" />
+            </span>
+            <span className="font-label-sm text-label-sm text-on-surface">
+              {remindersEnabled ? t('screens.settings.remindersOn') : t('screens.settings.remindersOff')}
+            </span>
+            <span className="ml-auto shrink-0">
+              {remindersEnabled
+                ? <MS name="check_circle" className="!text-[20px] text-primary" />
+                : <span className="block w-[18px] h-[18px] rounded-full border border-border-subtle" />}
+            </span>
+          </button>
+          <div className="flex flex-wrap gap-sm">
+            {REMINDER_PRESETS.map((preset) => {
+              const active = reminderDaysBefore.join(',') === preset.days.join(',');
+              return (
+                <button
+                  key={preset.key}
+                  disabled={!remindersEnabled}
+                  onClick={() => { if (demo) demoSetReminderDaysBefore(preset.days); else setReminderDaysBefore(preset.days); }}
+                  aria-pressed={active}
+                  className={`px-md py-sm rounded border font-label-sm text-label-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${active && remindersEnabled ? 'border-primary bg-primary/10 text-primary' : 'border-border-subtle text-on-surface-variant hover:bg-surface-container-high'}`}
+                >
+                  {t(`screens.settings.${preset.key}`)}
+                </button>
+              );
+            })}
+          </div>
+          <span className="font-label-sm text-label-sm text-text-muted">{t('screens.settings.remindersHelp')}</span>
         </Stagger.Item>
 
       </Stagger>

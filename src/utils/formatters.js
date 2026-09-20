@@ -1,7 +1,7 @@
 // FinTrack — Formatters
 
-import { currentLocale, tr } from '../i18n/runtime';
-import { getCurrency } from './currencyRuntime';
+import { currentLocale, tr } from '../i18n/runtime.js';
+import { getCurrency } from './currencyRuntime.js';
 
 // Cachés módulo-level: Intl.NumberFormat es caro de construir (~25µs) y estas
 // funciones corren por cada celda del Ledger y punto de chart en cada render.

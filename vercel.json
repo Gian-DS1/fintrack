@@ -38,6 +38,9 @@
       ]
     }
   ],
+  "crons": [
+    { "path": "/api/cron/card-reminders", "schedule": "0 10 * * *" }
+  ],
   "rewrites": [
     { "source": "/privacidad", "destination": "/privacidad.html" },
     { "source": "/((?!api/|privacidad).*)", "destination": "/index.html" }

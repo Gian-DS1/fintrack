@@ -738,3 +738,16 @@ export function demoRestoreCategory(category) {
 export function demoSetInitialCashBalance(amount) {
   usePrefsStore.setState({ initialCashBalance: Number(amount) || 0 });
 }
+
+// ── Recordatorios de pago (demo) ─────────────────────────────────────────────
+// Espejos de setRemindersEnabled / setReminderDaysBefore para que Ajustes no
+// toque Supabase en demo. El cron nunca ve estos datos: los recordatorios reales
+// salen de la tabla `profiles`, y el modo demo vive solo en sessionStorage.
+export function demoSetRemindersEnabled(enabled) {
+  usePrefsStore.setState({ remindersEnabled: Boolean(enabled) });
+}
+
+export function demoSetReminderDaysBefore(days) {
+  if (!Array.isArray(days) || !days.length) return;
+  usePrefsStore.setState({ reminderDaysBefore: days });
+}
