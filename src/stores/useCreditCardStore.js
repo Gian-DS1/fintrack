@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { todayISO } from '../utils/formatters';
 import useSavingsStore from './useSavingsStore';
 import { tr } from '../i18n/runtime';
-import { isDemoActive } from '../stitch/demoMode';
+import { isDemoActive } from '../stitch/demoFlag';
 
 // Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
 const localId = () =>

@@ -1,12 +1,10 @@
 // src/stitch/screens/categories/CategoryForm.jsx
 // Modal crear/editar categoría. Campos: nombre, tipo, emoji, color, keywords.
-// Branching demo/real como el resto de forms.
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import StitchSelect from '../../StitchSelect';
 import EmojiPicker from '../../EmojiPicker';
 import useCategoryStore from '../../../stores/useCategoryStore';
-import { isDemoActive, demoAddCategory, demoUpdateCategory } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
 import { Modal, Field, FormActions, inputCls } from '../../formUi';
 
@@ -22,7 +20,6 @@ export default function CategoryForm({ editing, onClose }) {
     { value: 'savings', label: t('types.savings') },
   ];
   const { addCategory, updateCategory } = useCategoryStore();
-  const demo = isDemoActive();
 
   const [form, setForm] = useState(editing
     ? {
@@ -42,11 +39,11 @@ export default function CategoryForm({ editing, onClose }) {
       name: form.name.trim(), type: form.type, icon: form.icon, color: form.color, keywords,
     };
     if (editing) {
-      if (demo) { demoUpdateCategory(editing.id, payload); toast.success(t('screens.categories.updated')); }
-      else { await updateCategory(editing.id, payload); toast.success(t('screens.categories.updated')); }
+      await updateCategory(editing.id, payload);
+      toast.success(t('screens.categories.updated'));
     } else {
-      if (demo) { demoAddCategory(payload); toast.success(t('screens.categories.created')); }
-      else { await addCategory(payload); toast.success(t('screens.categories.created')); }
+      await addCategory(payload);
+      toast.success(t('screens.categories.created'));
     }
     onClose();
   };

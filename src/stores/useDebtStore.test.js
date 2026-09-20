@@ -11,7 +11,7 @@ import useSavingsStore from './useSavingsStore';
 import useCategoryStore from './useCategoryStore';
 import useTransactionStore from './useTransactionStore';
 
-vi.mock('../stitch/demoMode', async (importOriginal) => {
+vi.mock('../stitch/demoFlag', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, isDemoActive: () => true };
 });

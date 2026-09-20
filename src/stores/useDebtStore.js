@@ -7,7 +7,7 @@ import useTransactionStore from './useTransactionStore';
 import useSavingsStore from './useSavingsStore';
 import { getCurrency } from '../utils/currencyRuntime';
 import { tr } from '../i18n/runtime';
-import { isDemoActive } from '../stitch/demoMode';
+import { isDemoActive } from '../stitch/demoFlag';
 
 // Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
 const localId = () =>

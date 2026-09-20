@@ -8,7 +8,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import { isDemoActive } from '../stitch/demoMode';
+import { isDemoActive } from '../stitch/demoFlag';
 import { tr } from '../i18n/runtime';
 
 const demoId = () =>

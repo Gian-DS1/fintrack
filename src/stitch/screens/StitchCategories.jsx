@@ -9,7 +9,6 @@ import Emoji from '../Emoji';
 import { Stagger } from '../StitchMotion';
 import useCategoryStore from '../../stores/useCategoryStore';
 import useTransactionStore from '../../stores/useTransactionStore';
-import { isDemoActive, demoDeleteCategory, demoRestoreCategory } from '../demoMode';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
 import CategoryForm from './categories/CategoryForm';
@@ -36,19 +35,14 @@ export default function StitchCategories() {
 
   const onDelete = async (cat) => {
     const used = transactions.filter((t) => t.categoryId === cat.id).length;
-    if (isDemoActive()) demoDeleteCategory(cat.id);
-    else await deleteCategory(cat.id);
+    await deleteCategory(cat.id);
     const message = used > 0
       ? tr('screens.categories.deletedWithOrphans')
           .replace('{n}', used)
           .replace('{txWord}', used === 1 ? tr('screens.categories.txOne') : tr('screens.categories.txMany'))
       : tr('screens.categories.deletedToast');
     toastUndo(message, async () => {
-      if (isDemoActive()) {
-        demoRestoreCategory(cat);
-      } else {
-        await restoreCategory(cat);
-      }
+      await restoreCategory(cat);
     });
   };
 

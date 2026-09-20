@@ -13,8 +13,9 @@ import useTransactionStore from './useTransactionStore';
 
 // isDemoActive() mira window.location + sessionStorage, que no existen en el
 // entorno `node` de vitest. Lo forzamos a true: lo que se prueba aquí es la
-// rama demo del store, no cómo se detecta el modo.
-vi.mock('../stitch/demoMode', async (importOriginal) => {
+// rama demo del store, no cómo se detecta el modo. Se mockea demoFlag (no
+// demoMode) porque es de ahí de donde los stores leen el flag.
+vi.mock('../stitch/demoFlag', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, isDemoActive: () => true };
 });

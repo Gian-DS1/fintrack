@@ -16,36 +16,15 @@ import usePrefsStore from '../stores/usePrefsStore';
 import { defaultCategories } from '../data/defaultCategories';
 import { computeCashback } from '../utils/creditCards';
 import { setRuntimeCurrency } from '../utils/currencyRuntime';
+import { isLocalhost, setDemoFlag, setFreshFlag, clearDemoFlags } from './demoFlag';
 
-const DEMO_FLAG = 'fintrack-demo-mode';
-const FRESH_FLAG = 'fintrack-fresh-mode';
-
-// El modo demo (QA) solo se habilita en localhost. NUNCA en producción: expone
-// la app con datos sembrados sin autenticación, así que debe quedar fuera del
-// despliegue público.
-export function isLocalhost() {
-  if (typeof window === 'undefined') return false;
-  const h = window.location.hostname;
-  return h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
-}
-
-export function isDemoActive() {
-  return isLocalhost() && (
-    sessionStorage.getItem(DEMO_FLAG) === '1' ||
-    sessionStorage.getItem(FRESH_FLAG) === '1'
-  );
-}
-
-// Distingue el sub-modo "usuario nuevo" (cuenta vacía) del demo establecido.
-// Solo lo usan el seeding y el gate de onboarding; el resto del código trata
-// ambos modos igual vía isDemoActive().
-export function isFreshActive() {
-  return isLocalhost() && sessionStorage.getItem(FRESH_FLAG) === '1';
-}
+// La detección del modo vive en demoFlag.js, que no importa nada del proyecto:
+// los stores la leen de ahí sin cerrar el ciclo store -> demoMode -> store.
+// Aquí se reexporta para los consumidores que ya la pedían a este módulo.
+export { isLocalhost, isDemoActive, isFreshActive } from './demoFlag';
 
 export function exitDemo() {
-  sessionStorage.removeItem(DEMO_FLAG);
-  sessionStorage.removeItem(FRESH_FLAG);
+  clearDemoFlags();
 }
 
 // ── Datos de ejemplo (en memoria) ───────────────────────────────────────────
@@ -256,7 +235,7 @@ export function seedDemoStores() {
 // Activa el modo demo: marca el flag y siembra los datos.
 export function enterDemo() {
   if (!isLocalhost()) return false;
-  sessionStorage.setItem(DEMO_FLAG, '1');
+  setDemoFlag();
   seedDemoStores();
   return true;
 }
@@ -280,7 +259,7 @@ export function seedFreshStores() {
 // Activa el modo "usuario nuevo": marca el flag y siembra los stores vacíos.
 export function enterFresh() {
   if (!isLocalhost()) return false;
-  sessionStorage.setItem(FRESH_FLAG, '1');
+  setFreshFlag();
   seedFreshStores();
   return true;
 }
@@ -410,37 +389,6 @@ export function demoCopyBudgetFromPreviousMonth(year, month) {
     return { budgets: [...next, ...rows] };
   });
   return true;
-}
-
-// ── Categorías (en demo no hay sesión: el store sale sin efecto) ──────────────
-export function demoAddCategory(category) {
-  const row = {
-    id: demoId(), name: category.name, type: category.type,
-    icon: category.icon, color: category.color, slug: category.slug || null,
-    keywords: category.keywords || [], isActive: true,
-    sortOrder: useCategoryStore.getState().categories.length,
-    createdAt: new Date().toISOString(),
-    isAccumulative: false, accumulationStart: null,
-  };
-  useCategoryStore.setState((s) => ({
-    categories: [...s.categories, row].sort((a, b) =>
-      (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })),
-  }));
-  return row;
-}
-export function demoUpdateCategory(id, updates) {
-  useCategoryStore.setState((s) => ({
-    categories: s.categories.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-  }));
-}
-export function demoDeleteCategory(id) {
-  useCategoryStore.setState((s) => ({ categories: s.categories.filter((c) => c.id !== id) }));
-}
-export function demoRestoreCategory(category) {
-  useCategoryStore.setState((s) => ({
-    categories: [...s.categories, category].sort((a, b) =>
-      (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' })),
-  }));
 }
 
 // ── Efectivo inicial (demo) ───────────────────────────────────────────────────

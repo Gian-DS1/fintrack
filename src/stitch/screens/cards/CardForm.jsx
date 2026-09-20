@@ -38,8 +38,7 @@ export default function CardForm({ editing, onClose }) {
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
 
-  // ensureCategory real con sesión; en demo no crea categorías (devuelve null).
-  const ensureCat = demo ? async () => null : useCategoryStore.getState().ensureCategory;
+  const ensureCat = useCategoryStore.getState().ensureCategory;
 
   const loadCatalogCard = async (catalogId) => {
     const tpl = getCatalogCard(catalogId);
