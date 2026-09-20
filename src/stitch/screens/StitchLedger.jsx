@@ -3,6 +3,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import Emoji from '../Emoji';
 import { useScreenStrings } from '../../i18n/useScreenStrings';
@@ -238,19 +239,11 @@ export default function StitchLedger() {
   const onDelete = async (t) => {
     if (demo) {
       demoDeleteTransaction(t.id);
-      toast((tt) => (
-        <span className="flex items-center gap-sm">{tr('screens.ledger.deletedToast')}
-          <button onClick={() => { demoRestoreTransaction(t); toast.dismiss(tt.id); }} className="text-primary font-bold underline">{tr('common.undo')}</button>
-        </span>
-      ), { duration: 6000 });
+      toastUndo(tr('screens.ledger.deletedToast'), () => demoRestoreTransaction(t));
       return;
     }
     const ok = await deleteTransaction(t.id);
-    if (ok) toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.ledger.deletedToast')}
-        <button onClick={() => { restoreTransaction(t); toast.dismiss(tt.id); }} className="text-primary font-bold underline">{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    if (ok) toastUndo(tr('screens.ledger.deletedToast'), () => restoreTransaction(t));
   };
 
   const filtered = useMemo(() => {
@@ -371,14 +364,9 @@ export default function StitchLedger() {
     clearSelection();
     if (removed && removed.length > 0) {
       const n = removed.length;
-      toast((tt) => (
-        <span className="flex items-center gap-sm">{n === 1 ? tr('screens.ledger.deletedOne') : tr('screens.ledger.deletedMany').replace('{n}', n)}
-          <button
-            onClick={() => { if (demo) demoRestoreManyTransactions(removed); else restoreManyTransactions(removed); toast.dismiss(tt.id); }}
-            className="text-primary font-bold underline"
-          >{tr('common.undo')}</button>
-        </span>
-      ), { duration: 6000 });
+      toastUndo(n === 1 ? tr('screens.ledger.deletedOne') : tr('screens.ledger.deletedMany').replace('{n}', n), () => {
+        if (demo) demoRestoreManyTransactions(removed); else restoreManyTransactions(removed);
+      });
     }
   };
 

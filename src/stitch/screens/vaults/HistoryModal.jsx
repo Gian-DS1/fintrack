@@ -1,6 +1,6 @@
 // Historial de aportes de una meta: resumen (total aportado + proyección) y lista
 // con borrar + Deshacer. El borrado revierte saldo y la transacción enlazada.
-import toast from 'react-hot-toast';
+import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
 import Emoji from '../../Emoji';
 import useSavingsStore from '../../../stores/useSavingsStore';
@@ -37,18 +37,10 @@ export default function HistoryModal({ goal: goalProp, onClose }) {
       const res = await deleteContribution(c.id);
       if (!res?.ok) return;
     }
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.vaults.contributionDeleted')}
-        <button
-          onClick={() => {
-            if (demo) demoAddContribution(c.goalId, c.amount, c.date, c.notes || '');
-            else if (restoreContribution) restoreContribution(c); else addContribution(c.goalId, c.amount, c.date, c.notes || '');
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    toastUndo(tr('screens.vaults.contributionDeleted'), () => {
+      if (demo) demoAddContribution(c.goalId, c.amount, c.date, c.notes || '');
+      else if (restoreContribution) restoreContribution(c); else addContribution(c.goalId, c.amount, c.date, c.notes || '');
+    });
   };
 
   return (

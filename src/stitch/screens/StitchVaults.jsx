@@ -2,7 +2,7 @@
 // lógica de aportes (con transacción enlazada) vive en useSavingsStore; la
 // proyección en vaults/projection.js. Patrón espejo de Deudas.
 import { useState } from 'react';
-import toast from 'react-hot-toast';
+import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import { Stagger } from '../StitchMotion';
 import StitchSelect from '../StitchSelect';
@@ -46,21 +46,13 @@ export default function StitchVaults({ embedded = false }) {
     // Captura los aportes antes de borrar para restaurarlos en el Deshacer.
     const goalContribs = contributions.filter((c) => c.goalId === goal.id);
     if (isDemoActive()) demoDeleteGoal(goal.id); else await deleteGoal(goal.id);
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.vaults.goalDeleted')}
-        <button
-          onClick={async () => {
-            if (isDemoActive()) {
-              demoRestoreGoal(goal, goalContribs);
-            } else {
-              await restoreGoalWithContributions(goal, goalContribs);
-            }
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    toastUndo(tr('screens.vaults.goalDeleted'), async () => {
+      if (isDemoActive()) {
+        demoRestoreGoal(goal, goalContribs);
+      } else {
+        await restoreGoalWithContributions(goal, goalContribs);
+      }
+    });
   };
 
   return (

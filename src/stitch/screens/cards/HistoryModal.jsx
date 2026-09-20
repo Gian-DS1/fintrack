@@ -1,7 +1,7 @@
 // Modal de historial de abonos de una tarjeta. Lista los abonos (fecha, monto,
 // nota) de más reciente a más antiguo, con cashback de por vida arriba y borrar
 // con deshacer.
-import toast from 'react-hot-toast';
+import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
 import { isDemoActive, demoDeleteCardPayment, demoAddCardPayment } from '../../demoMode';
 import { useI18n } from '../../../contexts/I18nContext';
@@ -22,17 +22,9 @@ export default function HistoryModal({ card, transactions, onClose }) {
 
   const onDelete = (p) => {
     if (demo) demoDeleteCardPayment(card.id, p.id); else deleteCardPayment(card.id, p.id);
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.cards.paymentDeleted')}
-        <button
-          onClick={() => {
-            if (demo) demoAddCardPayment(card.id, p); else addCardPayment(card.id, p);
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    toastUndo(tr('screens.cards.paymentDeleted'), () => {
+      if (demo) demoAddCardPayment(card.id, p); else addCardPayment(card.id, p);
+    });
   };
 
   return (

@@ -3,7 +3,7 @@
 // El CRUD vive en useCategoryStore; eliminar deja las transacciones sin categoría
 // (la BD hace ON DELETE SET NULL).
 import { useState } from 'react';
-import toast from 'react-hot-toast';
+import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import Emoji from '../Emoji';
 import { Stagger } from '../StitchMotion';
@@ -38,26 +38,18 @@ export default function StitchCategories() {
     const used = transactions.filter((t) => t.categoryId === cat.id).length;
     if (isDemoActive()) demoDeleteCategory(cat.id);
     else await deleteCategory(cat.id);
-    toast((tt) => (
-      <span className="flex items-center gap-sm">
-        {used > 0
-          ? tr('screens.categories.deletedWithOrphans')
-              .replace('{n}', used)
-              .replace('{txWord}', used === 1 ? tr('screens.categories.txOne') : tr('screens.categories.txMany'))
-          : tr('screens.categories.deletedToast')}
-        <button
-          onClick={async () => {
-            if (isDemoActive()) {
-              demoRestoreCategory(cat);
-            } else {
-              await restoreCategory(cat);
-            }
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    const message = used > 0
+      ? tr('screens.categories.deletedWithOrphans')
+          .replace('{n}', used)
+          .replace('{txWord}', used === 1 ? tr('screens.categories.txOne') : tr('screens.categories.txMany'))
+      : tr('screens.categories.deletedToast');
+    toastUndo(message, async () => {
+      if (isDemoActive()) {
+        demoRestoreCategory(cat);
+      } else {
+        await restoreCategory(cat);
+      }
+    });
   };
 
   return (

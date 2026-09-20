@@ -2,6 +2,7 @@
 // y lista de pagos con borrar + Deshacer. El borrado revierte saldo y la
 // transacción enlazada (vía deletePayment del store / mutador demo).
 import toast from 'react-hot-toast';
+import { toastUndo } from '../../toastUndo';
 import MS from '../../MS';
 import useDebtStore from '../../../stores/useDebtStore';
 import { isDemoActive, demoDeleteDebtPayment, demoAddDebtPayment } from '../../demoMode';
@@ -35,18 +36,10 @@ export default function HistoryModal({ debt: debtProp, onClose }) {
       if (!res?.ok) return;
       if (res.hadTransactionLink === false) toast(tr('screens.debts.balanceRevertedNoLink'), { duration: 5000 });
     }
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.debts.paymentDeleted')}
-        <button
-          onClick={() => {
-            if (demo) demoAddDebtPayment(p.debtId, p.amount, p.date, p.notes || '');
-            else if (restorePayment) restorePayment(p); else addPayment(p.debtId, p.amount, p.date, p.notes || '');
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    toastUndo(tr('screens.debts.paymentDeleted'), () => {
+      if (demo) demoAddDebtPayment(p.debtId, p.amount, p.date, p.notes || '');
+      else if (restorePayment) restorePayment(p); else addPayment(p.debtId, p.amount, p.date, p.notes || '');
+    });
   };
 
   return (

@@ -1,7 +1,7 @@
 // Deudas — shell: header (deuda total) + grid avalancha + modales. La lógica de
 // pagos (con transacción enlazada) vive en el store; el payoff en debts/payoff.js.
 import { useMemo, useState } from 'react';
-import toast from 'react-hot-toast';
+import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import { Stagger } from '../StitchMotion';
 import CountUp from '../CountUp';
@@ -41,23 +41,15 @@ export default function StitchDebts({ embedded = false }) {
     // Capturar los pagos antes de borrar para poder restaurar todo en Deshacer.
     const debtPayments = payments.filter((p) => p.debtId === debt.id);
     if (isDemoActive()) demoDeleteDebt(debt.id); else await deleteDebt(debt.id);
-    toast((tt) => (
-      <span className="flex items-center gap-sm">{tr('screens.debts.debtDeleted')}
-        <button
-          onClick={async () => {
-            if (isDemoActive()) {
-              demoRestoreDebt(debt, debtPayments);
-            } else {
-              await addDebt(debt);
-              // Re-aplica los pagos (recrea sus transacciones enlazadas).
-              for (const p of debtPayments) await restorePayment(p);
-            }
-            toast.dismiss(tt.id);
-          }}
-          className="text-primary font-bold underline"
-        >{tr('common.undo')}</button>
-      </span>
-    ), { duration: 6000 });
+    toastUndo(tr('screens.debts.debtDeleted'), async () => {
+      if (isDemoActive()) {
+        demoRestoreDebt(debt, debtPayments);
+      } else {
+        await addDebt(debt);
+        // Re-aplica los pagos (recrea sus transacciones enlazadas).
+        for (const p of debtPayments) await restorePayment(p);
+      }
+    });
   };
 
   return (
