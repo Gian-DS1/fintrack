@@ -285,8 +285,10 @@ export default function StitchSettings() {
         </Stagger.Item>
 
         {/* Recordatorios de pago: el cron diario (api/cron/card-reminders) lee
-            estas preferencias de `profiles`. El aviso del día del vencimiento y
-            los de mora van siempre; aquí solo se elige la antelación. */}
+            estas preferencias de `profiles` y las aplica TANTO a tarjetas COMO
+            a préstamos (un solo correo, un solo interruptor). El aviso del día
+            del vencimiento va siempre; los de mora aplican solo a tarjetas.
+            Aquí solo se elige la antelación. */}
         <Stagger.Item className="lg:col-span-6 bg-surface-panel border border-border-subtle rounded-lg inner-glow p-lg flex flex-col gap-sm">
           <div className="flex justify-between items-center border-b border-border-subtle pb-sm">
             <h2 className="font-mono-data text-mono-data text-on-surface-variant">{t('screens.settings.remindersLabel').toUpperCase()}</h2>

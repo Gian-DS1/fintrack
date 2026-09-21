@@ -99,7 +99,7 @@ to regenerate them from the current commit.
 | Charts | Recharts (lazy — only downloaded by screens that draw charts) |
 | Icons | Material Symbols (UI) + JoyPixels v10 PNGs from jsDelivr (category emojis; the unicode→codepoint mapping is local, see `src/stitch/emojiCodepoint.js` — no runtime emoji library) |
 | Animation | Framer Motion |
-| Serverless | Vercel functions (`/api/parse-pdf` imports statements; `/api/feedback` receives feedback; `/api/cron/card-reminders` emails credit-card payment reminders on a daily cron) |
+| Serverless | Vercel functions (`/api/parse-pdf` imports statements; `/api/feedback` receives feedback; `/api/cron/card-reminders` emails credit-card and loan payment reminders on a daily cron) |
 | Tests | Vitest (unit) + Playwright (E2E) |
 | CI | GitHub Actions — lint, unit tests, production build and E2E on every push and PR |
 

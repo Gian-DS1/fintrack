@@ -1,8 +1,17 @@
 // /api/cron/card-reminders — envía por correo los recordatorios de pago de
-// tarjetas. Lo dispara Vercel Cron una vez al día (ver "crons" en vercel.json).
+// tarjetas Y PRÉSTAMOS en un solo correo diario. Lo dispara Vercel Cron una
+// vez al día (ver "crons" en vercel.json). El archivo conserva el nombre
+// "card-reminders" (y la ruta registrada en Vercel) aunque ahora cubra ambos:
+// renombrarlo no aporta nada funcional y arriesga una ventana de 404 entre
+// deploy y re-registro del cron.
 //
 // Por qué un cron y no lógica en el navegador: el aviso debe llegar aunque el
 // usuario NO abra la app; ese es justamente el caso que causa la mora.
+//
+// Las preferencias (reminders_enabled, reminder_days_before) son COMPARTIDAS
+// entre tarjetas y préstamos: un solo interruptor, una sola antelación. Los
+// préstamos no generan avisos de mora (ver src/utils/loanReminders.js), así
+// que ese comportamiento solo aplica a tarjetas.
 //
 // Seguridad: este endpoint corre con la service_role key, que salta RLS y ve
 // los datos de todos los usuarios. Por eso:
@@ -21,8 +30,9 @@ import {
   getDueReminders, todayInZone, reminderKey,
   DEFAULT_DAYS_BEFORE, REMINDER_TIMEZONE, OVERDUE_MAX_DAYS,
 } from '../../src/utils/cardReminders.js';
+import { getDueLoanReminders, loanReminderKey } from '../../src/utils/loanReminders.js';
 import { buildReminderEmail } from '../_lib/reminderEmail.js';
-import { mapCardRow, mapTransactionRow, groupByUser } from '../_lib/mapRows.js';
+import { mapCardRow, mapTransactionRow, mapDebtRow, groupByUser } from '../_lib/mapRows.js';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
@@ -110,8 +120,11 @@ export default async function handler(req, res) {
     const userIds = profiles.map((p) => p.user_id);
     const refDate = todayInZone(timeZone);
 
-    // 2. Dos lecturas anchas (no 2·N): tarjetas y transacciones de todos.
-    const [cardsRes, txRes, emails] = await Promise.all([
+    // 2. Lecturas anchas (no N·N): tarjetas, transacciones y préstamos de
+    //    todos. Los préstamos se filtran en el servidor (activos y con fecha
+    //    de pago) porque no hace falta traer nada más: minimum_payment está
+    //    almacenado, no se deriva de transacciones.
+    const [cardsRes, txRes, debtsRes, emails] = await Promise.all([
       admin.from('credit_cards')
         .select('id, user_id, name, bank, cutoff_day, due_day, opening_balance, color, paid_cycles, payments, cashback_rules, catalog_id')
         .in('user_id', userIds),
@@ -119,6 +132,11 @@ export default async function handler(req, res) {
         .select('id, user_id, card_id, date, amount, cashback_earned')
         .in('user_id', userIds)
         .not('card_id', 'is', null),
+      admin.from('debts')
+        .select('id, user_id, creditor_name, total_amount, current_balance, interest_rate, minimum_payment, due_date, status, currency')
+        .in('user_id', userIds)
+        .eq('status', 'active')
+        .not('due_date', 'is', null),
       fetchUserEmails(admin),
     ]);
     if (cardsRes.error) throw new Error(`credit_cards: ${cardsRes.error.message}`);
@@ -126,6 +144,15 @@ export default async function handler(req, res) {
 
     const cardsByUser = groupByUser(cardsRes.data || [], mapCardRow);
     const txByUser = groupByUser(txRes.data || [], mapTransactionRow);
+
+    // Los préstamos son la parte nueva de este cron: un fallo aquí no debe
+    // tumbar los recordatorios de tarjetas que ya funcionan.
+    let debtsByUser = new Map();
+    if (debtsRes.error) {
+      console.warn('card-reminders: debts no disponible:', debtsRes.error.message);
+    } else {
+      debtsByUser = groupByUser(debtsRes.data || [], mapDebtRow);
+    }
 
     // 3. Bitácora reciente → claves ya enviadas. La ventana cubre desde la
     //    antelación máxima configurada hasta el tope de mora.
@@ -153,10 +180,35 @@ export default async function handler(req, res) {
       sentByUser.set(row.user_id, set);
     }
 
+    // Bitácora de préstamos, misma ventana. Si la tabla no existe (migración
+    // sin correr) NO se cae el cron: se omiten los préstamos ese día. Enviarlos
+    // sin bitácora sería peor —un correo repetido cada mañana— que no enviarlos.
+    let loansEnabled = true;
+    const loanSentByUser = new Map();
+    const { data: loanLogRows, error: loanLogErr } = await admin
+      .from('loan_reminder_log')
+      .select('user_id, debt_id, due_date, offset_key')
+      .in('user_id', userIds)
+      .gte('due_date', iso(windowStart))
+      .lte('due_date', iso(windowEnd));
+    if (loanLogErr) {
+      console.warn('card-reminders: loan_reminder_log no disponible (¿migración sin correr?):', loanLogErr.message);
+      loansEnabled = false;
+    } else {
+      for (const row of loanLogRows || []) {
+        const set = loanSentByUser.get(row.user_id) || new Set();
+        set.add(loanReminderKey(row.debt_id, row.due_date, row.offset_key));
+        loanSentByUser.set(row.user_id, set);
+      }
+    }
+
     // 4. Por usuario: calcular, enviar y registrar.
     let emailsSent = 0;
     let remindersSent = 0;
+    let cardRemindersSent = 0;
+    let loanRemindersSent = 0;
     const newLogRows = [];
+    const newLoanLogRows = [];
 
     for (const profile of profiles) {
       const uid = profile.user_id;
@@ -175,17 +227,28 @@ export default async function handler(req, res) {
           daysBefore,
           sentByUser.get(uid) || new Set(),
         );
-        if (!reminders.length) continue;
+        const loans = loansEnabled
+          ? getDueLoanReminders(
+              debtsByUser.get(uid) || [],
+              refDate,
+              daysBefore,
+              loanSentByUser.get(uid) || new Set(),
+            )
+          : [];
+        if (!reminders.length && !loans.length) continue;
 
         const mail = buildReminderEmail({
           reminders,
+          loans,
           currency: profile.currency || 'DOP',
           appUrl,
         });
 
         await sendEmail({ apiKey: RESEND_API_KEY, from, to, ...mail });
         emailsSent += 1;
-        remindersSent += reminders.length;
+        remindersSent += reminders.length + loans.length;
+        cardRemindersSent += reminders.length;
+        loanRemindersSent += loans.length;
 
         // Solo se registra tras un envío exitoso: si el correo falla, el aviso
         // se reintenta mañana en vez de perderse para siempre.
@@ -193,6 +256,12 @@ export default async function handler(req, res) {
           newLogRows.push({
             user_id: uid, card_id: r.cardId,
             due_date: r.dueDateISO, offset_key: r.offsetKey, channel: 'email',
+          });
+        }
+        for (const l of loans) {
+          newLoanLogRows.push({
+            user_id: uid, debt_id: l.debtId,
+            due_date: l.dueDateISO, offset_key: l.offsetKey, channel: 'email',
           });
         }
       } catch (err) {
@@ -208,12 +277,21 @@ export default async function handler(req, res) {
       if (insErr) console.error('card-reminders: no se pudo escribir la bitácora:', insErr.message);
     }
 
+    if (newLoanLogRows.length) {
+      const { error: insErr } = await admin
+        .from('loan_reminder_log')
+        .upsert(newLoanLogRows, { onConflict: 'user_id,debt_id,due_date,offset_key,channel', ignoreDuplicates: true });
+      if (insErr) console.error('card-reminders: no se pudo escribir la bitácora de préstamos:', insErr.message);
+    }
+
     return res.status(200).json({
       ok: true,
       date: iso(refDate),
       users: profiles.length,
       emails: emailsSent,
       reminders: remindersSent,
+      cards: cardRemindersSent,
+      loans: loanRemindersSent,
     });
   } catch (error) {
     console.error('card-reminders error:', error);
