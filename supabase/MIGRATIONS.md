@@ -130,6 +130,39 @@ configurable advance notices, `0` for "due today", and `-1..-3` for overdue.
   (`RESEND_API_KEY`, `CRON_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, …) are set — see
   `.env.example`.
 
+## Loan payment reminders by email (2026-09-20)
+
+**`add_loan_reminders.sql`** — creates the `loan_reminder_log` table (with RLS
+and grants) used to deduplicate reminders sent for loans (`debts`). Idempotent
+and additive. Requires `add_card_reminders.sql` (or `schema.sql`) to have been
+run first.
+
+It adds **no new preference columns**: `profiles.reminders_enabled` and
+`profiles.reminder_days_before` are shared between cards and loans by product
+decision — one toggle, one daily email with a "Tarjetas" section and a
+"Préstamos" section.
+
+`loan_reminder_log` is a *sibling* of `reminder_log`, not a widening of it:
+`reminder_log`'s primary key carries `card_id NOT NULL` referencing
+`credit_cards`, so accommodating loans there would mean rewriting a primary key
+on a table that already holds rows. A separate table is purely additive.
+
+**Loans do not get overdue notices.** The loan due date is derived with
+`nextMonthlyOccurrence`, which always returns the next occurrence *on or after*
+today, so `days` never comes back negative for a debt — once the due date
+passes, it simply rolls to next month. The app also has no record of which
+installment was actually paid, so claiming "it was due yesterday" would
+frequently be wrong. Loans only get the configured advance notices and the
+due-today one.
+
+### What happens if you deploy the code BEFORE running this migration?
+- **Reads:** safe. The cron logs a warning that `loan_reminder_log` is missing
+  and **skips loans entirely** for that run; card reminders keep working
+  unchanged. Sending loan reminders without the log would mean a repeat email
+  every morning, which is worse than sending none.
+- **Writes:** none attempted against the missing table.
+- **Settings:** unaffected — no new columns, no new UI.
+
 ## Previous migrations (already applied in historical production)
 
 `schema.sql` is the canonical source of truth (idempotent; it already includes the

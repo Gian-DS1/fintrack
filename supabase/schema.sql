@@ -212,6 +212,20 @@ create table if not exists public.reminder_log (
   primary key (user_id, card_id, due_date, offset_key, channel)
 );
 
+-- ── Bitácora de recordatorios de préstamos ──────────────────────────────────
+-- Hermana de reminder_log para las deudas (`debts`). Tabla aparte porque la PK
+-- de reminder_log lleva card_id NOT NULL contra credit_cards. Los préstamos no
+-- generan avisos de mora (ver src/utils/loanReminders.js).
+create table if not exists public.loan_reminder_log (
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  debt_id     uuid not null references public.debts(id) on delete cascade,
+  due_date    date not null,
+  offset_key  integer not null,
+  channel     text not null default 'email',
+  sent_at     timestamptz not null default now(),
+  primary key (user_id, debt_id, due_date, offset_key, channel)
+);
+
 -- ============================================================================
 -- Índices sobre foreign keys (acelera JOINs y DELETE en cascada).
 -- transactions.user_id ya queda cubierto por transactions_user_date_idx.
@@ -236,6 +250,7 @@ create index if not exists recurring_transactions_user_id_idx     on public.recu
 create index if not exists recurring_transactions_category_id_idx on public.recurring_transactions (category_id);
 create index if not exists recurring_transactions_card_id_idx     on public.recurring_transactions (card_id);
 create index if not exists reminder_log_user_id_idx               on public.reminder_log (user_id);
+create index if not exists loan_reminder_log_user_id_idx          on public.loan_reminder_log (user_id);
 
 -- ============================================================================
 -- Row Level Security + políticas "solo mis filas" + grants para cada tabla.
@@ -249,7 +264,7 @@ declare
   tables text[] := array[
     'profiles', 'categories', 'credit_cards', 'transactions', 'budgets', 'budget_groups',
     'savings', 'savings_contributions',
-    'debts', 'debt_payments', 'plans', 'recurring_transactions', 'reminder_log'
+    'debts', 'debt_payments', 'plans', 'recurring_transactions', 'reminder_log', 'loan_reminder_log'
   ];
 begin
   foreach t in array tables loop
