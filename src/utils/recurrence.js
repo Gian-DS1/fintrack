@@ -1,6 +1,6 @@
 // FinTrack — Lógica pura de recurrencia
 
-import { toISODate } from './formatters';
+import { toISODate } from './formatters.js';
 
 /**
  * Avanza una fecha ISO (YYYY-MM-DD) según la frecuencia.
