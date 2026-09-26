@@ -8,16 +8,13 @@
 // Las reglas de antelación y de mora NO se redefinen aquí: se importan de
 // cardReminders.js para que un solo correo no pueda aplicar dos criterios.
 //
-// Tres diferencias con las tarjetas:
-//   1. El monto NO se deriva de transacciones: `monthlyPayment` (minimum_payment)
-//      está almacenado, así que no hace falta leer transactions ni debt_payments.
+// Diferencias con las tarjetas:
+//   1. El monto es la cuota mensual fija (`monthlyPayment`), pero sí se lee
+//      `debt_payments` vía `getNextLoanDueDate` para omitir avisos si la cuota
+//      del ciclo actual ya fue saldada.
 //   2. Cada préstamo trae SU PROPIA moneda (debts.currency), no la del perfil.
-//   3. No hay avisos de mora. nextMonthlyOccurrence siempre devuelve la próxima
-//      ocurrencia HOY O DESPUÉS, así que `days` nunca sale negativo aquí: al
-//      pasar el día de pago, la fecha rueda sola al mes siguiente. Además la
-//      app no registra qué cuota se pagó, así que afirmar "venció ayer" sería
-//      falso muy a menudo. resolveOffsetKey se sigue usando igual; su rama
-//      days < 0 simplemente no se activa nunca para un préstamo.
+//   3. No hay avisos de mora. Al pasar el día de pago o pagarse la cuota, la
+//      fecha rueda sola al mes siguiente.
 //
 // Este módulo es puro: no hace red, no lee env vars y no toca el DOM.
 

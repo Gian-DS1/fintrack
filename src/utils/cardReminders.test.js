@@ -83,6 +83,12 @@ describe('getDueReminders', () => {
     expect(getDueReminders([paid], txs, dayBefore(5), [5, 1])).toHaveLength(0);
   });
 
+  it('NO avisa hoy el día del vencimiento si la tarjeta ya fue pagada ayer', () => {
+    // Vence hoy (2026-06-05) y se pagó ayer (2026-06-04)
+    const paid = { ...card, payments: [{ id: 'p1', amount: 5000, date: '2026-06-04' }] };
+    expect(getDueReminders([paid], txs, dayBefore(0), [5, 1])).toHaveLength(0);
+  });
+
   it('no avisa una tarjeta sin saldo facturado', () => {
     expect(getDueReminders([card], [], dayBefore(5), [5, 1])).toHaveLength(0);
   });
