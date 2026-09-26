@@ -1,30 +1,16 @@
-// Valida que emojiCodepoint (conversión local) produce exactamente el mismo
-// codepoint que emoji-toolkit (la librería que reemplazó; queda como devDep
-// solo para este test). Corre sobre el catálogo curado completo + casos con
-// tono de piel, ZWJ, banderas y keycaps.
+// Valida que emojiCodepoint (conversión local) produce exactamente el
+// codepoint canónico esperado (validado contra el snapshot de JoyPixels/emoji-toolkit).
+// Corre sobre el catálogo curado completo + casos con tono de piel, ZWJ, banderas y keycaps.
 
 import { describe, it, expect } from 'vitest';
-import joypixels from 'emoji-toolkit';
 import { EMOJI_CATALOG } from '../data/emojiCatalog';
 import { emojiCodepoint } from './emojiCodepoint';
-
-function joypixelsCodepoint(emoji) {
-  try {
-    const html = joypixels.toImage(emoji);
-    const m = html.match(/\/([0-9a-f]+(?:-[0-9a-f]+)*)\.png/i);
-    return m ? m[1].toLowerCase() : null;
-  } catch {
-    return null;
-  }
-}
+import EXPECTED_CODEPOINTS from './emojiCodepoints.fixture.json';
 
 describe('emojiCodepoint', () => {
-  // Timeout amplio: joypixels.toImage tarda ~60 ms por emoji (regex enormes).
-  it('coincide con emoji-toolkit para todo el catálogo curado', { timeout: 30000 }, () => {
+  it('coincide con la referencia canónica para todo el catálogo curado', () => {
     for (const { char } of EMOJI_CATALOG) {
-      const expected = joypixelsCodepoint(char);
-      // Si joypixels no lo conoce, nuestro valor da igual (el PNG no existe y
-      // el onError de <Emoji> cae al nativo); solo comparamos los conocidos.
+      const expected = EXPECTED_CODEPOINTS[char];
       if (expected) {
         expect(emojiCodepoint(char), `emoji ${char}`).toBe(expected);
       }
@@ -34,7 +20,7 @@ describe('emojiCodepoint', () => {
   it('coincide en casos especiales (tonos, ZWJ, banderas, keycaps)', () => {
     const extras = ['👍🏽', '👨‍👩‍👦', '🇩🇴', '🇺🇸', '1️⃣', '#️⃣', '❤️', '☂️', '✈️'];
     for (const char of extras) {
-      const expected = joypixelsCodepoint(char);
+      const expected = EXPECTED_CODEPOINTS[char];
       if (expected) {
         expect(emojiCodepoint(char), `emoji ${char}`).toBe(expected);
       }

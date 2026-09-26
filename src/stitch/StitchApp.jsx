@@ -1,9 +1,8 @@
 // StitchApp — raíz de la app (auth, fetches de stores, rutas protegidas,
-// keep-alive, recurrentes) montando el shell + pantallas Stitch.
+// recurrentes) montando el shell + pantallas Stitch.
 
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 import StitchHead from './StitchHead';
@@ -29,7 +28,6 @@ const StitchCategories = lazy(() => import('./screens/StitchCategories'));
 const CurrencyOnboarding = lazy(() => import('./screens/CurrencyOnboarding'));
 
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 import { isDemoActive, isFreshActive, seedDemoStores, seedFreshStores } from './demoMode';
 import useCategoryStore from '../stores/useCategoryStore';
 import useTransactionStore from '../stores/useTransactionStore';
@@ -98,16 +96,6 @@ function AuthGate() {
       fetchPrefs();
     }
   }, [demo, fresh, fetchPrefs]);
-
-  useEffect(() => {
-    if (!user) return;
-    const ping = async () => {
-      try { await supabase.from('categories').select('id').limit(1); } catch (e) { console.warn('keep-alive', e); }
-    };
-    ping();
-    const id = setInterval(ping, 15 * 60 * 1000);
-    return () => clearInterval(id);
-  }, [user]);
 
   useEffect(() => {
     if (!user) return;

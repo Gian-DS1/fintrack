@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -6,10 +6,10 @@ import { todayISO } from '../utils/formatters';
 import useSavingsStore from './useSavingsStore';
 import { tr } from '../i18n/runtime';
 import { isDemoActive } from '../stitch/demoFlag';
+import { generateId } from '../utils/id';
 
 // Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
-const localId = () =>
-  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const localId = () => generateId('demo-');
 
 const mapFromDb = (c) => ({
   id: c.id,
@@ -149,7 +149,7 @@ const useCreditCardStore = create(
         if (value <= 0) return;
 
         const entry = {
-          id: (globalThis.crypto?.randomUUID?.() || `p-${Date.now()}-${Math.random().toString(36).slice(2)}`),
+          id: generateId('p-'),
           amount: value,
           date: date || todayISO(),
           note: note || '',

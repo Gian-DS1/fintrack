@@ -9,11 +9,7 @@ import { todayISO, formatCurrency } from '../../../utils/formatters';
 import { useI18n } from '../../../contexts/I18nContext';
 import { toastCelebrate } from '../../toastCelebrate';
 import { Modal, Field, FormActions, inputCls } from '../../formUi';
-import useTransactionStore from '../../../stores/useTransactionStore';
-import useCreditCardStore from '../../../stores/useCreditCardStore';
-import useSavingsStore from '../../../stores/useSavingsStore';
-import usePrefsStore from '../../../stores/usePrefsStore';
-import { getCashShortfall, canAffordPayment } from '../dashboard/selectors';
+import { useCascadePayment } from '../finances/useCascadePayment';
 import SavingsPickerModal from '../finances/SavingsPickerModal';
 
 const fmt = (n, c) => formatCurrency(n, c);
@@ -22,15 +18,10 @@ export default function PaymentModal({ debt, onClose }) {
   const { t } = useI18n();
   const addPayment = useDebtStore((s) => s.addPayment);
   const addPaymentWithCascade = useDebtStore((s) => s.addPaymentWithCascade);
-  const transactions = useTransactionStore((s) => s.transactions);
-  const cards = useCreditCardStore((s) => s.cards);
-  const goals = useSavingsStore((s) => s.goals);
-  const getTotalSaved = useSavingsStore((s) => s.getTotalSaved);
-  const initialCashBalance = usePrefsStore((s) => s.initialCashBalance);
+
   const [amount, setAmount] = useState(debt.monthlyPayment ? String(debt.monthlyPayment) : '');
   const [date, setDate] = useState(todayISO());
   const [note, setNote] = useState('');
-  const [picker, setPicker] = useState(null); // { shortfall, amt } cuando hay faltante
 
   // Registra el pago (con o sin cascada). Llamado tras decidir la meta si hizo falta.
   const applyPayment = (amt, savingsPick) => {
@@ -46,28 +37,13 @@ export default function PaymentModal({ debt, onClose }) {
     onClose();
   };
 
+  const { picker, processPayment, handlePickGoal, closePicker, goals } = useCascadePayment({
+    onPay: applyPayment,
+  });
+
   const submit = (e) => {
     e.preventDefault();
-    const amt = Number(amount);
-    if (!amt || amt <= 0) return;
-
-    // La cascada corre en demo Y en cuenta real (el cálculo de faltante usa los
-    // stores, que en cuenta real vienen de Supabase).
-    const { available, shortfall } = getCashShortfall(transactions, initialCashBalance, cards, amt);
-    if (shortfall === 0) { applyPayment(amt, null); return; }
-
-    const totalSavings = getTotalSaved();
-    if (!canAffordPayment(available, totalSavings, amt)) {
-      toast.error(t('cascade.noFunds').replace('{avail}', fmt(available + totalSavings, debt.currency)).replace('{need}', fmt(amt, debt.currency)));
-      return;
-    }
-    // ¿Hay una meta que cubra el faltante sola? (no repartimos)
-    const hasEligible = goals.some((g) => g.status !== 'completed' && Number(g.currentAmount) >= shortfall);
-    if (!hasEligible) {
-      toast.error(t('cascade.noSingleGoal').replace('{amt}', fmt(shortfall, debt.currency)));
-      return;
-    }
-    setPicker({ shortfall, amt }); // abre el modal de meta
+    processPayment(amount, debt.currency);
   };
 
   return (
@@ -92,8 +68,8 @@ export default function PaymentModal({ debt, onClose }) {
         open
         shortfall={picker.shortfall}
         goals={goals}
-        onPick={(pick) => { const amt = picker.amt; setPicker(null); applyPayment(amt, pick); }}
-        onClose={() => setPicker(null)}
+        onPick={handlePickGoal}
+        onClose={closePicker}
       />
     )}
     </>

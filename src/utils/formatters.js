@@ -133,12 +133,7 @@ export function todayISO() {
   return toISODate(new Date());
 }
 
-/**
- * Generate a unique ID
- */
-export function generateId() {
-  return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-}
+export { generateId } from './id.js';
 
 /**
  * Pone en mayúscula la primera letra de cada palabra, dejando el resto tal cual

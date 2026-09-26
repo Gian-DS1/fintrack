@@ -7,10 +7,10 @@ import { computeCashback } from '../utils/creditCards';
 import { getCurrency } from '../utils/currencyRuntime';
 import { tr } from '../i18n/runtime';
 import { isDemoActive } from '../stitch/demoFlag';
+import { generateId } from '../utils/id';
 
 // Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
-const localId = () =>
-  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const localId = () => generateId('demo-');
 
 // El cashback aplica a CUALQUIER tipo de gasto (fijo o variable), no solo al
 // tipo genérico 'expense'. Misma regla que el formulario de transacciones.

@@ -13,7 +13,7 @@ import CardForm from './cards/CardForm';
 import PaymentModal from './cards/PaymentModal';
 import HistoryModal from './cards/HistoryModal';
 
-export default function StitchCards({ embedded = false }) {
+export default function StitchCards() {
   const { t } = useI18n();
   const { cards, addCard, deleteCard } = useCreditCardStore();
   const { transactions } = useTransactionStore();
@@ -34,7 +34,7 @@ export default function StitchCards({ embedded = false }) {
   };
 
   return (
-    <div className={embedded ? '' : 'p-md sm:p-margin-safe max-w-[1728px] mx-auto w-full'}>
+    <div>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-xl gap-md">
         <div>
           <div className="flex items-center gap-sm mb-xs">

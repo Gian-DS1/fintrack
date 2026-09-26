@@ -17,8 +17,8 @@ Run them **in this order** before (or together with) deploying the new code:
 `currency`/`monthly_contribution` columns created by migration #1. Running them in
 reverse fails with `column "currency" of relation "savings" does not exist`.
 
-> The `plans` table is NOT dropped (it is left orphaned after the merge). Drop it
-> by hand only once you have verified that the goals migrated correctly.
+> The `plans` table is NOT dropped automatically on existing databases (it was left orphaned after the merge). Drop it
+> by hand only once you have verified that the goals migrated correctly. Note: `plans` is completely removed from `schema.sql` for new setups.
 
 ### What happens if you deploy the code BEFORE running these migrations?
 - **Reads:** safe. The Savings screen loads; missing columns fall back to their

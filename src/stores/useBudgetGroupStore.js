@@ -10,9 +10,9 @@ import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { isDemoActive } from '../stitch/demoFlag';
 import { tr } from '../i18n/runtime';
+import { generateId } from '../utils/id';
 
-const demoId = () =>
-  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const demoId = () => generateId('demo-');
 
 const fromDb = (g) => ({
   id: g.id,

@@ -3,10 +3,10 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import { findDuplicateCategories } from '../data/defaultCategories';
 import { isDemoActive } from '../stitch/demoFlag';
+import { generateId } from '../utils/id';
 
 // Id local para las filas creadas en modo demo (no hay Postgres que lo genere).
-const localId = () =>
-  (globalThis.crypto?.randomUUID?.() || `demo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const localId = () => generateId('demo-');
 
 // Orden alfabético estable, el mismo que usan addCategory y restoreCategory.
 const byName = (a, b) => (a.name || '').localeCompare(b.name || '', 'es', { sensitivity: 'base' });

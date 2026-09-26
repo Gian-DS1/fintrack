@@ -6,31 +6,24 @@ import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import { Stagger } from '../StitchMotion';
 import StitchSelect from '../StitchSelect';
-import CountUp from '../CountUp';
 import useSavingsStore from '../../stores/useSavingsStore';
 import { getHorizonFilterOptions } from './vaults/horizons';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
-import { formatCurrency } from '../../utils/formatters';
 import VaultItem from './vaults/VaultItem';
 import VaultForm from './vaults/VaultForm';
 import ContributionModal from './vaults/ContributionModal';
 import HistoryModal from './vaults/HistoryModal';
 
-const fmt = (n) => formatCurrency(n);
-
-export default function StitchVaults({ embedded = false }) {
+export default function StitchVaults() {
   const { t } = useI18n();
   const { goals, contributions, deleteGoal, restoreGoalWithContributions } = useSavingsStore();
-  const getTotalSaved = useSavingsStore((s) => s.getTotalSaved);
 
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [contribGoal, setContribGoal] = useState(null);
   const [historyGoal, setHistoryGoal] = useState(null);
   const [horizonFilter, setHorizonFilter] = useState('');
-
-  const total = getTotalSaved();
 
   const visibleGoals = goals.filter((g) => {
     if (!horizonFilter) return true;
@@ -51,7 +44,7 @@ export default function StitchVaults({ embedded = false }) {
   };
 
   return (
-    <div className={embedded ? '' : 'p-md sm:p-margin-safe max-w-[1728px] mx-auto w-full'}>
+    <div>
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-lg mb-xl">
         <div>
           <div className="flex items-center gap-2 mb-sm">
@@ -59,7 +52,6 @@ export default function StitchVaults({ embedded = false }) {
             <span className="font-mono-data text-mono-data text-tertiary uppercase tracking-wider">{t('common.activeSystem')}</span>
           </div>
           <h1 className="font-headline-lg text-headline-lg text-on-surface">{t('landing.features.savings')}</h1>
-          {!embedded && <p className="font-body-md text-body-md text-text-muted mt-2">{t('screens.vaults.totalAccumulated')} <span className="text-tertiary font-mono-data"><CountUp value={total} format={fmt} /></span></p>}
         </div>
         <div className="flex items-center gap-sm self-start">
           {goals.length > 0 && (

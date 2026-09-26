@@ -167,20 +167,6 @@ create table if not exists public.savings_contributions (
   created_at      timestamptz not null default now()
 );
 
--- ── Plan financiero (metas a corto/mediano/largo plazo) ─────────────────────
-create table if not exists public.plans (
-  id             uuid primary key default gen_random_uuid(),
-  user_id        uuid not null references auth.users(id) on delete cascade,
-  title          text not null,
-  description    text,
-  target_amount  numeric not null default 0,
-  current_amount numeric not null default 0,
-  deadline       date,
-  type           text,                               -- short | medium | long (horizonte)
-  status         text not null default 'pending',    -- pending | in_progress | completed
-  created_at     timestamptz not null default now()
-);
-
 -- ── Transacciones recurrentes (plantillas) ──────────────────────────────────
 create table if not exists public.recurring_transactions (
   id          uuid primary key default gen_random_uuid(),
@@ -245,7 +231,6 @@ create index if not exists debt_payments_transaction_id_idx       on public.debt
 create index if not exists savings_contributions_user_id_idx      on public.savings_contributions (user_id);
 create index if not exists savings_contributions_goal_id_idx      on public.savings_contributions (goal_id);
 create index if not exists savings_contributions_transaction_id_idx on public.savings_contributions (transaction_id);
-create index if not exists plans_user_id_idx                      on public.plans (user_id);
 create index if not exists recurring_transactions_user_id_idx     on public.recurring_transactions (user_id);
 create index if not exists recurring_transactions_category_id_idx on public.recurring_transactions (category_id);
 create index if not exists recurring_transactions_card_id_idx     on public.recurring_transactions (card_id);
@@ -264,7 +249,7 @@ declare
   tables text[] := array[
     'profiles', 'categories', 'credit_cards', 'transactions', 'budgets', 'budget_groups',
     'savings', 'savings_contributions',
-    'debts', 'debt_payments', 'plans', 'recurring_transactions', 'reminder_log', 'loan_reminder_log'
+    'debts', 'debt_payments', 'recurring_transactions', 'reminder_log', 'loan_reminder_log'
   ];
 begin
   foreach t in array tables loop

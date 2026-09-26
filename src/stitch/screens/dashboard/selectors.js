@@ -257,7 +257,7 @@ export function getCumulativeLiquidWealth(transactions, initialCashBalance, rang
 // Tope de puntos diarios del timeline (~18 meses). Por encima, la serie pasa a
 // granularidad MENSUAL: dibujar miles de puntos no aporta lectura y castiga el
 // render; por debajo, el detalle diario da "suficientes datos" a la línea.
-export const MAX_DAILY_POINTS = 550;
+const MAX_DAILY_POINTS = 550;
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -360,8 +360,8 @@ export function getWealthTimeline(transactions, initialCashBalance, range, refDa
 // patrimonio. SIMÉTRICO: el anillo del ping de HOY (r máx 14 + trazo ≈ 15px)
 // necesita el mismo espacio arriba que abajo, porque HOY puede ser el pico
 // (patrimonio subiendo) o el valle (bajando) y el SVG recorta lo que se sale.
-export const WEALTH_Y_PAD_TOP = 0.12;    // 12% de aire sobre el pico
-export const WEALTH_Y_PAD_BOTTOM = 0.12; // 12% bajo el valle
+const WEALTH_Y_PAD_TOP = 0.12;    // 12% de aire sobre el pico
+const WEALTH_Y_PAD_BOTTOM = 0.12; // 12% bajo el valle
 
 // Dominio vertical [min, max] de la línea de patrimonio con AIRE arriba y abajo
 // para que NO se corte al subir mucho. Con `[dataMin, dataMax]` el pico queda
@@ -397,7 +397,7 @@ export function pickHeadPoint(data, hoverIdx, selectedKey) {
 // estado de cuenta suele vencer ~25 días después del corte (p. ej. corte el 1,
 // pago el 26), así que 14 días dejaba fuera tarjetas recién facturadas. 30 días
 // alinea la ventana con la de las metas y avisa desde que la tarjeta se factura.
-export const CARD_REMINDER_WINDOW_DAYS = 30;
+const CARD_REMINDER_WINDOW_DAYS = 30;
 
 // Recordatorios de tarjetas por pagar (puro). Una entrada por tarjeta con saldo
 // facturado pendiente (pendingBilled > 0, no pagada) cuyo pago vence dentro de

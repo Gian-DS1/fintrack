@@ -59,9 +59,9 @@ export default function StitchFinances() {
           exit={reduced ? undefined : { opacity: 0, scale: 0.99 }}
           transition={{ duration: 0.16, ease: EASE_OUT }}
         >
-          {tab === 'vaults' && <StitchVaults embedded />}
-          {tab === 'debts' && <StitchDebts embedded />}
-          {tab === 'cards' && <StitchCards embedded />}
+          {tab === 'vaults' && <StitchVaults />}
+          {tab === 'debts' && <StitchDebts />}
+          {tab === 'cards' && <StitchCards />}
         </motion.div>
       </AnimatePresence>
     </div>

@@ -5,7 +5,6 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { toastUndo } from '../toastUndo';
 import MS from '../MS';
 import Emoji from '../Emoji';
-import { useScreenStrings } from '../../i18n/useScreenStrings';
 import { useI18n } from '../../contexts/I18nContext';
 import { tr } from '../../i18n/runtime';
 import StitchCategorySelect from '../StitchCategorySelect';
@@ -35,15 +34,14 @@ const blank = { date: todayISO(), amount: '', type: 'variable_expense', category
 const PAGE_SIZE = 50;
 
 export default function StitchLedger() {
-  const strings = useScreenStrings();
   const { t } = useI18n();
   const navigate = useNavigate();
 
   // TYPES construido dinámicamente
   const TYPES = [
-    { v: 'income', l: strings.ledger.income },
-    { v: 'fixed_expense', l: strings.ledger.fixedExpense },
-    { v: 'variable_expense', l: strings.ledger.variableExpense },
+    { v: 'income', l: t('common.income') },
+    { v: 'fixed_expense', l: t('transactions.fixedExpense') },
+    { v: 'variable_expense', l: t('transactions.variableExpense') },
     { v: 'savings', l: t('types.savings') },
   ];
 
@@ -351,14 +349,14 @@ export default function StitchLedger() {
     <div className="p-md sm:p-margin-safe max-w-[1728px] mx-auto w-full">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-xl gap-md">
         <div>
-          <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface">{strings.ledger.title}</h1>
+          <h1 className="font-headline-lg text-headline-lg font-bold text-on-surface">{t('nav.transactions')}</h1>
           <p className="font-mono-data text-mono-data text-text-muted mt-sm uppercase">
-            {transactions.length} {strings.ledger.records} · {strings.ledger.synchronized}
+            {transactions.length} {t('common.records')} · {t('common.synchronized')}
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-primary ml-xs status-glow-live align-middle" />
           </p>
         </div>
         <button data-tour="ledger-new" onClick={openCreate} className="bg-primary text-on-primary font-label-sm text-label-sm uppercase tracking-widest font-bold px-md py-sm rounded hover:bg-primary-container transition-colors inner-glow flex items-center gap-xs">
-          <MS name="add" className="text-[16px]" /> {strings.buttons.newTransaction}
+          <MS name="add" className="text-[16px]" /> {t('common.newTransaction')}
         </button>
       </div>
 
@@ -368,13 +366,13 @@ export default function StitchLedger() {
       <div data-tour="ledger-filters" className="bg-surface-container-lowest border border-border-subtle rounded-lg p-sm mb-lg grid grid-cols-2 gap-sm sm:flex sm:flex-wrap sm:items-center inner-glow">
         <div className="relative col-span-2 sm:col-auto sm:flex-1 min-w-0 sm:min-w-[200px]">
           <MS name="search" className="absolute left-sm top-1/2 -translate-y-1/2 text-text-muted !text-[14px]" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={strings.ledger.searchPlaceholder} aria-label={strings.ledger.searchPlaceholder} className="w-full h-[34px] max-sm:h-11 bg-surface-container border border-border-subtle rounded py-0 pl-[28px] pr-sm font-label-sm text-label-sm text-on-surface focus:outline-none focus:border-primary inner-glow placeholder:text-text-muted" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('screens.ledger.searchPlaceholder')} aria-label={t('screens.ledger.searchPlaceholder')} className="w-full h-[34px] max-sm:h-11 bg-surface-container border border-border-subtle rounded py-0 pl-[28px] pr-sm font-label-sm text-label-sm text-on-surface focus:outline-none focus:border-primary inner-glow placeholder:text-text-muted" />
         </div>
         <StitchSelect
           value={filterType}
           onChange={setFilterType}
-          options={[{ value: '', label: strings.ledger.typeFilterAll }, ...TYPES.map((t) => ({ value: t.v, label: t.l }))]}
-          placeholder={strings.ledger.typeFilterAll}
+          options={[{ value: '', label: t('common.allTypes') }, ...TYPES.map((typ) => ({ value: typ.v, label: typ.l }))]}
+          placeholder={t('common.allTypes')}
           compact
           className="w-full min-w-0 sm:w-auto sm:min-w-[150px]"
         />
@@ -383,7 +381,7 @@ export default function StitchLedger() {
           onChange={setFilterCat}
           options={categories}
           includeAllOption
-          allLabel={strings.ledger.categoryFilterAll}
+          allLabel={t('common.allCategories')}
           compact
           className="w-full min-w-0 sm:w-auto sm:min-w-[200px]"
         />
@@ -396,11 +394,11 @@ export default function StitchLedger() {
             value={filterCard}
             onChange={setFilterCard}
             options={[
-              { value: '', label: strings.ledger.cardFilterAll },
+              { value: '', label: t('common.allCards') },
               { value: 'none', label: t('screens.ledger.noCard') },
               ...cards.map((c) => ({ value: c.id, label: c.name })),
             ]}
-            placeholder={strings.ledger.cardFilterAll}
+            placeholder={t('common.allCards')}
             compact
             className="col-span-2 min-w-0 sm:col-auto sm:w-auto sm:min-w-[180px]"
           />
@@ -408,11 +406,11 @@ export default function StitchLedger() {
         <div className="col-span-2 grid grid-cols-2 gap-sm sm:flex sm:flex-wrap sm:items-center sm:gap-xs">
           {/* Rótulo encima del campo en móvil (columnas gemelas); en línea en sm+. */}
           <div className="flex flex-col gap-xs sm:flex-row sm:items-center">
-            <span className="font-mono-data text-mono-data text-text-muted uppercase">{strings.ledger.from}</span>
+            <span className="font-mono-data text-mono-data text-text-muted uppercase">{t('common.from')}</span>
             <StitchDatePicker value={dateFrom} max={dateTo || undefined} onChange={setDateFrom} compact className="w-full sm:w-[150px]" />
           </div>
           <div className="flex flex-col gap-xs sm:flex-row sm:items-center">
-            <span className="font-mono-data text-mono-data text-text-muted uppercase">{strings.ledger.to}</span>
+            <span className="font-mono-data text-mono-data text-text-muted uppercase">{t('common.to')}</span>
             <StitchDatePicker value={dateTo} min={dateFrom || undefined} onChange={setDateTo} compact className="w-full sm:w-[150px]" />
           </div>
         </div>
@@ -583,7 +581,7 @@ export default function StitchLedger() {
       </div>
 
       {showForm && (
-        <Modal onClose={() => setShowForm(false)} title={editing ? strings.ledger.editTransaction : strings.buttons.newTransaction} width="520px">
+        <Modal onClose={() => setShowForm(false)} title={editing ? t('transactions.editTransaction') : t('common.newTransaction')} width="520px">
           {(requestClose) => (
             <form onSubmit={submit} className="flex flex-col gap-md">
               <div className="grid grid-cols-2 gap-md">
