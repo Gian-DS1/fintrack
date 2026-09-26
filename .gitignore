@@ -48,5 +48,7 @@ skills-lock.json
 
 # Estados de cuenta (datos financieros personales)
 Estados/
+*.pdf
+Estado de cuenta*.pdf
 
 tmp-verify-*
