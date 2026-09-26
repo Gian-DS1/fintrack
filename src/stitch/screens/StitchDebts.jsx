@@ -72,7 +72,7 @@ export default function StitchDebts({ embedded = false }) {
       ) : (
         <Stagger className="grid grid-cols-1 lg:grid-cols-3 gap-md">
           {ordered.map((d, i) => (
-            <DebtItem key={d.id} debt={d} index={i} onPay={setPayDebt} onHistory={setHistoryDebt} onEdit={openEdit} onDelete={onDelete} />
+            <DebtItem key={d.id} debt={d} index={i} payments={payments} onPay={setPayDebt} onHistory={setHistoryDebt} onEdit={openEdit} onDelete={onDelete} />
           ))}
         </Stagger>
       )}

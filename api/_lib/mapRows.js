@@ -57,6 +57,16 @@ export function mapDebtRow(row) {
   };
 }
 
+/** Fila de debt_payments → pago de préstamo en camelCase. */
+export function mapDebtPaymentRow(row) {
+  return {
+    id: row.id,
+    debtId: row.debt_id,
+    amount: Number(row.amount) || 0,
+    date: row.date,
+  };
+}
+
 /** Agrupa filas por user_id → Map<userId, Array>. */
 export function groupByUser(rows = [], map = (r) => r) {
   const out = new Map();

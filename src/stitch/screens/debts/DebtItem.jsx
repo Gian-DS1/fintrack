@@ -4,22 +4,22 @@ import { useMemo } from 'react';
 import MS from '../../MS';
 import { Stagger } from '../../StitchMotion';
 import { formatCurrency, formatDate, toISODate } from '../../../utils/formatters';
-import { nextMonthlyOccurrence } from '../../../utils/recurrence';
+import { getNextLoanDueDate } from '../../../utils/loanReminders';
 import { useI18n } from '../../../contexts/I18nContext';
 import { getPayoff } from './payoff';
 
 const fmt = (n) => formatCurrency(n);
 
-export default function DebtItem({ debt, index, onPay, onHistory, onEdit, onDelete }) {
+export default function DebtItem({ debt, index, onPay, onHistory, onEdit, onDelete, payments = [] }) {
   const { t } = useI18n();
   const high = Number(debt.interestRate) >= 8;
   const paidPct = Number(debt.originalAmount) > 0
     ? (1 - Number(debt.currentBalance) / Number(debt.originalAmount)) * 100
     : 0;
   const payoff = useMemo(() => getPayoff(debt), [debt]);
-  // Próxima fecha de pago anclada a hoy: si el día del mes ya pasó, rueda sola al
-  // mes siguiente (jul 26 → ago 26) sin tocar la base de datos.
-  const nextDueISO = debt.due_date ? nextMonthlyOccurrence(debt.due_date) : null;
+  // Próxima fecha de pago pendiente: si la cuota de este ciclo ya fue pagada,
+  // avanza al mes siguiente sin requerir reescribir la base de datos.
+  const nextDueISO = debt.due_date ? getNextLoanDueDate(debt, payments) : null;
 
   return (
     <Stagger.Item className={`bg-surface-card border rounded-lg p-md inner-glow flex flex-col gap-md ${high ? 'border-accent-warning/30' : 'border-border-subtle'}`}>

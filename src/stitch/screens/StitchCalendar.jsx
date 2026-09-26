@@ -34,6 +34,7 @@ export default function StitchCalendar() {
   const transactions = useTransactionStore((s) => s.transactions);
   const categories = useCategoryStore((s) => s.categories);
   const debts = useDebtStore((s) => s.debts);
+  const debtPayments = useDebtStore((s) => s.payments);
   const cards = useCreditCardStore((s) => s.cards);
   const goals = useSavingsStore((s) => s.goals);
   const recurring = useRecurringStore((s) => s.recurring);
@@ -50,9 +51,9 @@ export default function StitchCalendar() {
   };
 
   const movements = useMemo(() => getDayMovements(transactions, year, month), [transactions, year, month]);
-  const dueEvents = useMemo(() => getDueEvents({ debts, cards, goals, recurring }, year, month, now, transactions), [debts, cards, goals, recurring, year, month, now, transactions]);
+  const dueEvents = useMemo(() => getDueEvents({ debts, cards, goals, recurring, debtPayments }, year, month, now, transactions), [debts, debtPayments, cards, goals, recurring, year, month, now, transactions]);
   const summary = useMemo(() => getMonthSummary(transactions, year, month), [transactions, year, month]);
-  const upcoming = useMemo(() => getUpcoming({ debts, cards, goals, recurring }, now, transactions, 30), [debts, cards, goals, recurring, now, transactions]);
+  const upcoming = useMemo(() => getUpcoming({ debts, cards, goals, recurring, debtPayments }, now, transactions, 30), [debts, debtPayments, cards, goals, recurring, now, transactions]);
 
   const firstDow = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();

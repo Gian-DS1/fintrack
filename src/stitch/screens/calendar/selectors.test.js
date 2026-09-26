@@ -44,6 +44,16 @@ describe('getDueEvents', () => {
     const e = getDueEvents({ debts: [], cards: [], goals: [], recurring }, 2026, 5, now, []);
     expect(e[5][0].type).toBe('recurrente');
   });
+  it('deuda pagada en el ciclo no aparece en el mes actual sino que rueda al siguiente', () => {
+    const debts = [{ id: 'd1', creditorName: 'Banco', monthlyPayment: 5000, due_date: '2026-06-28', status: 'active', currency: 'DOP' }];
+    const debtPayments = [{ debtId: 'd1', amount: 5000, date: '2026-06-27' }];
+    const eJunio = getDueEvents({ debts, cards: [], goals: [], recurring: [], debtPayments }, 2026, 5, now, []);
+    expect(eJunio[28]).toBeUndefined();
+
+    const eJulio = getDueEvents({ debts, cards: [], goals: [], recurring: [], debtPayments }, 2026, 6, now, []);
+    expect(eJulio[28]).toBeTruthy();
+    expect(eJulio[28][0].type).toBe('deuda');
+  });
   it('eventos fuera del mes se ignoran', () => {
     const debts = [{ creditorName: 'X', monthlyPayment: 1, due_date: '2026-07-10', status: 'active' }];
     const e = getDueEvents({ debts, cards: [], goals: [], recurring: [] }, 2026, 5, now, []);

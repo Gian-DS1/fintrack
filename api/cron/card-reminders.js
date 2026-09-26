@@ -32,7 +32,7 @@ import {
 } from '../../src/utils/cardReminders.js';
 import { getDueLoanReminders, loanReminderKey } from '../../src/utils/loanReminders.js';
 import { buildReminderEmail } from '../_lib/reminderEmail.js';
-import { mapCardRow, mapTransactionRow, mapDebtRow, groupByUser } from '../_lib/mapRows.js';
+import { mapCardRow, mapTransactionRow, mapDebtRow, mapDebtPaymentRow, groupByUser } from '../_lib/mapRows.js';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
@@ -124,7 +124,7 @@ export default async function handler(req, res) {
     //    todos. Los préstamos se filtran en el servidor (activos y con fecha
     //    de pago) porque no hace falta traer nada más: minimum_payment está
     //    almacenado, no se deriva de transacciones.
-    const [cardsRes, txRes, debtsRes, emails] = await Promise.all([
+    const [cardsRes, txRes, debtsRes, debtPaymentsRes, emails] = await Promise.all([
       admin.from('credit_cards')
         .select('id, user_id, name, bank, cutoff_day, due_day, opening_balance, color, paid_cycles, payments, cashback_rules, catalog_id')
         .in('user_id', userIds),
@@ -137,6 +137,9 @@ export default async function handler(req, res) {
         .in('user_id', userIds)
         .eq('status', 'active')
         .not('due_date', 'is', null),
+      admin.from('debt_payments')
+        .select('id, user_id, debt_id, amount, date')
+        .in('user_id', userIds),
       fetchUserEmails(admin),
     ]);
     if (cardsRes.error) throw new Error(`credit_cards: ${cardsRes.error.message}`);
@@ -152,6 +155,13 @@ export default async function handler(req, res) {
       console.warn('card-reminders: debts no disponible:', debtsRes.error.message);
     } else {
       debtsByUser = groupByUser(debtsRes.data || [], mapDebtRow);
+    }
+
+    let paymentsByUser = new Map();
+    if (debtPaymentsRes?.error) {
+      console.warn('card-reminders: debt_payments no disponible:', debtPaymentsRes.error.message);
+    } else {
+      paymentsByUser = groupByUser(debtPaymentsRes?.data || [], mapDebtPaymentRow);
     }
 
     // 3. Bitácora reciente → claves ya enviadas. La ventana cubre desde la
@@ -230,6 +240,7 @@ export default async function handler(req, res) {
         const loans = loansEnabled
           ? getDueLoanReminders(
               debtsByUser.get(uid) || [],
+              paymentsByUser.get(uid) || [],
               refDate,
               daysBefore,
               loanSentByUser.get(uid) || new Set(),

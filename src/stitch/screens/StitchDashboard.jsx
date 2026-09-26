@@ -12,7 +12,7 @@ import useCategoryStore from '../../stores/useCategoryStore';
 import useBudgetStore from '../../stores/useBudgetStore';
 import useCreditCardStore from '../../stores/useCreditCardStore';
 import { getBudgetSummary } from '../../utils/calculations';
-import { nextMonthlyOccurrence } from '../../utils/recurrence';
+import { getNextLoanDueDate } from '../../utils/loanReminders';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { monthShort } from '../../i18n/runtime';
 import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getWealthTimeline, getCardReminders } from './dashboard/selectors';
@@ -127,8 +127,9 @@ export default function StitchDashboard() {
       out.push({ days, tag: t('dashboard.cardToPay'), tc: days <= 2 ? 'text-accent-error' : 'text-accent-warning', t: days === 0 ? t('calendar.today').toUpperCase() : t('dashboard.inDays').replace('{d}', days), body: `${cardName}: ${fmt(amount)} ${t('dashboard.dueOn')} ${formatDate(dueDateISO)}.`, to: '/tarjetas' });
     });
     debts.filter((d) => d.status === 'active' && d.due_date).forEach((d) => {
-      // Próxima fecha de pago anclada a hoy: si el día ya pasó, rueda al mes siguiente.
-      const nextDueISO = nextMonthlyOccurrence(d.due_date, now);
+      // Próxima fecha de pago pendiente (avanza al mes siguiente si la de este mes ya se pagó).
+      const nextDueISO = getNextLoanDueDate(d, payments, now);
+      if (!nextDueISO) return;
       const due = new Date(nextDueISO + 'T00:00:00');
       const days = Math.round((due - todayMid) / 86400000);
       if (days < 0 || days > 14) return;
@@ -148,7 +149,7 @@ export default function StitchDashboard() {
     return out
       .sort((a, b) => a.days - b.days || (urgency[a.tc] ?? 3) - (urgency[b.tc] ?? 3))
       .slice(0, 6);
-  }, [cards, debts, goals, transactions, now, t]);
+  }, [cards, debts, goals, transactions, payments, now, t]);
 
   return (
     <div className="p-sm sm:p-md max-w-[1728px] mx-auto w-full">

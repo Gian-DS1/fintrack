@@ -2,7 +2,7 @@
 // devuelven mapas/listas por día. ISO local (sin toISOString).
 import { getEffectiveAmount } from '../../../utils/calculations';
 import { getCardBalances } from '../../../utils/creditCards';
-import { nextMonthlyOccurrence } from '../../../utils/recurrence';
+import { getNextLoanDueDate } from '../../../utils/loanReminders';
 import { tr } from '../../../i18n/runtime';
 
 const EXPENSE_TYPES = ['expense', 'fixed_expense', 'variable_expense'];
@@ -34,15 +34,15 @@ export function getDayMovements(transactions, year, month) {
 }
 
 // Eventos de vencimiento por día del mes (4 fuentes).
-export function getDueEvents({ debts = [], cards = [], goals = [], recurring = [] }, year, month, now, transactions = []) {
+export function getDueEvents({ debts = [], cards = [], goals = [], recurring = [], debtPayments = [] }, year, month, now, transactions = []) {
   const map = {};
   const push = (day, ev) => { (map[day] = map[day] || []).push(ev); };
 
   debts.forEach((d) => {
     if (d.status !== 'active' || !d.due_date) return;
-    // Próxima fecha de pago anclada a hoy: si el día ya pasó, rueda al mes que sigue.
-    const nextDue = nextMonthlyOccurrence(d.due_date, now);
-    if (!inMonth(nextDue, year, month)) return;
+    // Próxima fecha de pago pendiente (si ya se pagó este mes, rueda al siguiente).
+    const nextDue = getNextLoanDueDate(d, debtPayments, now);
+    if (!nextDue || !inMonth(nextDue, year, month)) return;
     push(dayOf(nextDue), { type: 'deuda', label: d.creditorName, amount: Number(d.monthlyPayment) || 0, color: COLOR.deuda, to: TO.deuda });
   });
 
@@ -79,7 +79,7 @@ export function getMonthSummary(transactions, year, month) {
 }
 
 // Próximos vencimientos: desde hoy hasta +days, ordenados por fecha.
-export function getUpcoming({ debts = [], cards = [], goals = [], recurring = [] }, now, transactions = [], days = 30) {
+export function getUpcoming({ debts = [], cards = [], goals = [], recurring = [], debtPayments = [] }, now, transactions = [], days = 30) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const limit = new Date(today); limit.setDate(limit.getDate() + days);
   const out = [];
@@ -91,7 +91,7 @@ export function getUpcoming({ debts = [], cards = [], goals = [], recurring = []
     out.push({ date: String(iso).slice(0, 10), daysUntil, type, label, amount, color: COLOR[type], to: TO[type] });
   };
 
-  debts.forEach((d) => { if (d.status === 'active') add(nextMonthlyOccurrence(d.due_date, now), 'deuda', d.creditorName, Number(d.monthlyPayment) || 0); });
+  debts.forEach((d) => { if (d.status === 'active') add(getNextLoanDueDate(d, debtPayments, now), 'deuda', d.creditorName, Number(d.monthlyPayment) || 0); });
   cards.forEach((c) => {
     const bal = getCardBalances(c, transactions, now);
     if (bal && !bal.isPaid && (bal.pendingBilled || 0) > 0) add(bal.cycles?.dueDateISO, 'tarjeta', c.name, bal.pendingBilled);
