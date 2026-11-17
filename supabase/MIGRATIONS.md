@@ -169,7 +169,9 @@ due-today one.
 bank notification emails; see [`docs/AUTO_INGEST.md`](../docs/AUTO_INGEST.md)).
 Idempotent and additive:
 
-- `transactions.source` (`manual` | `shortcut` | `email`, default `manual`).
+- `transactions.source` (`manual` | `shortcut` | `email`, default `manual`) and
+  `transactions.external_id` (source message id, with a partial unique index —
+  makes re-sending the same email idempotent).
 - `credit_cards.last4` (nullable) — matches bank emails to a card.
 - `ingest_tokens` — personal tokens; only the SHA-256 is stored. RLS "only my
   rows", with `select/insert/delete` for `authenticated` (no `update`).

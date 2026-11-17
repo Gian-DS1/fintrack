@@ -16,6 +16,11 @@ const localId = () => generateId('demo-');
 // tipo genérico 'expense'. Misma regla que el formulario de transacciones.
 const earnsCashback = (type) => type === 'expense' || type === 'fixed_expense' || type === 'variable_expense';
 
+// Al deshacer un borrado se conserva el origen de un gasto automático (ver
+// /api/ingest). Solo se envía si existe: una fila con `source` implica que la
+// columna está en la base, y las manuales usan el default.
+const autoSource = (tx) => (tx.source && tx.source !== 'manual' ? { source: tx.source } : {});
+
 const useTransactionStore = create(
   persist(
     (set, get) => ({
@@ -214,6 +219,7 @@ const useTransactionStore = create(
       notes: tx.notes || null,
       currency: tx.currency || getCurrency(),
       cashback_earned: Number(tx.cashbackEarned) || 0,
+      ...autoSource(tx),
     };
 
     const { data, error } = await supabase.from('transactions').insert(dbTx).select().single();
@@ -277,6 +283,7 @@ const useTransactionStore = create(
       notes: tx.notes || null,
       currency: tx.currency || getCurrency(),
       cashback_earned: Number(tx.cashbackEarned) || 0,
+      ...autoSource(tx),
     }));
 
     const { data, error } = await supabase.from('transactions').insert(dbTxs).select();

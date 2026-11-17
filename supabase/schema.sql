@@ -77,6 +77,7 @@ create table if not exists public.transactions (
   currency        text not null default 'DOP',
   cashback_earned numeric not null default 0,
   source          text not null default 'manual',   -- manual | shortcut | email (registro automático)
+  external_id     text,                             -- id del mensaje de origen (idempotencia del registro automático)
   created_at      timestamptz not null default now(),
   constraint transactions_type_check check (type in ('income','expense','fixed_expense','variable_expense','savings')),
   constraint transactions_amount_positive check (amount >= 0)
@@ -281,6 +282,15 @@ end $$;
 alter table public.transactions
   add column if not exists source text not null default 'manual';
 
+-- Identificador del mensaje en el sistema de origen (p. ej. el id del correo en
+-- Gmail). Hace idempotente el reproceso: el mismo correo enviado dos veces no
+-- crea dos gastos, y dos compras idénticas en correos distintos sí crean dos.
+alter table public.transactions
+  add column if not exists external_id text;
+create unique index if not exists transactions_external_id_key
+  on public.transactions (user_id, source, external_id)
+  where external_id is not null;
+
 -- ── 2. Últimos 4 dígitos de la tarjeta ──────────────────────────────────────
 -- Los correos del banco identifican la tarjeta por sus últimos 4 dígitos, no
 -- por el nombre que el usuario le puso en FinTrack. Opcional (NULL = sin dato).
@@ -323,10 +333,13 @@ end $$;
 -- Comprobar-e-insertar desde el endpoint tendría una carrera, así que se hace
 -- aquí bajo un advisory lock por usuario (se libera al terminar la transacción).
 --
--- Se considera duplicado, dentro del mismo día y con el mismo monto:
+-- Se considera duplicado, con el mismo monto:
 --   - otro canal automático en las últimas 48 h (toque + correo del mismo pago),
---     siempre que las tarjetas no se contradigan;
---   - el mismo canal en los últimos 2 minutos (reintento del atajo).
+--     con fecha igual o contigua (un correo procesado pasada la medianoche, o
+--     que no trae fecha, cae en el día siguiente) y tarjetas que no se contradigan;
+--   - el mismo canal con el mismo external_id (el mismo correo, reprocesado);
+--   - el mismo canal SIN external_id, misma fecha, en los últimos 2 minutos
+--     (reintento del atajo, que no tiene un id de mensaje que mandar).
 -- Dos compras legítimas iguales el mismo día por el mismo canal (dos pasajes)
 -- sí se registran: por eso la ventana del mismo canal es corta.
 --
@@ -334,6 +347,9 @@ end $$;
 -- puede inundar la cuenta, y un atajo en bucle se corta solo.
 --
 -- Devuelve { status: 'created' | 'duplicate' | 'rate_limited', id }.
+-- Firma anterior (sin p_external_id): se elimina para no dejar dos sobrecargas.
+drop function if exists public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text);
+
 create or replace function public.ingest_transaction(
   p_user_id     uuid,
   p_amount      numeric,
@@ -345,7 +361,8 @@ create or replace function public.ingest_transaction(
   p_currency    text,
   p_cashback    numeric,
   p_notes       text,
-  p_source      text
+  p_source      text,
+  p_external_id text default null
 ) returns jsonb
 language plpgsql
 set search_path = public
@@ -375,15 +392,18 @@ begin
   select id into v_id
   from public.transactions
   where user_id = p_user_id
-    and date = p_date
-    and amount = p_amount
     and source <> 'manual'
     and (
       (source <> p_source
+        and amount = p_amount
+        and date between p_date - 1 and p_date + 1
         and created_at > now() - interval '48 hours'
         and (card_id is null or p_card_id is null or card_id = p_card_id))
       or
-      (source = p_source and created_at > now() - interval '2 minutes')
+      (source = p_source and p_external_id is not null and external_id = p_external_id)
+      or
+      (source = p_source and p_external_id is null and external_id is null
+        and amount = p_amount and date = p_date and created_at > now() - interval '2 minutes')
     )
   order by created_at desc
   limit 1;
@@ -392,10 +412,10 @@ begin
   end if;
 
   insert into public.transactions
-    (user_id, category_id, card_id, amount, type, description, date, notes, currency, cashback_earned, source)
+    (user_id, category_id, card_id, amount, type, description, date, notes, currency, cashback_earned, source, external_id)
   values
     (p_user_id, p_category_id, p_card_id, p_amount, p_type, p_description, p_date, p_notes,
-     coalesce(p_currency, 'DOP'), coalesce(p_cashback, 0), p_source)
+     coalesce(p_currency, 'DOP'), coalesce(p_cashback, 0), p_source, p_external_id)
   returning id into v_id;
 
   return jsonb_build_object('status', 'created', 'id', v_id);
@@ -404,7 +424,7 @@ $$;
 
 -- Solo el endpoint (service_role) puede ejecutarla. Además es SECURITY INVOKER:
 -- aunque un cliente lograra invocarla, RLS le impediría escribir filas ajenas.
-revoke all on function public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text)
+revoke all on function public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text, text)
   from public, anon, authenticated;
-grant execute on function public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text)
+grant execute on function public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text, text)
   to service_role;

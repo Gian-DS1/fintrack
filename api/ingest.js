@@ -36,6 +36,7 @@ const SKIP_MESSAGES = {
   refund: 'Reverso o devolución: no se registró.',
   otp: 'Código de verificación: no se registró.',
   payment_or_income: 'Pago o ingreso: no se registró como gasto.',
+  cash_withdrawal: 'Retiro de efectivo: no se registró como gasto.',
   not_a_purchase: 'El mensaje no parece un consumo: no se registró.',
 };
 
@@ -157,6 +158,7 @@ export default async function handler(req, res) {
       p_cashback: row.cashbackEarned,
       p_notes: row.notes,
       p_source: row.source,
+      p_external_id: row.externalId,
     });
     if (rpcErr) throw new Error(`ingest_transaction: ${rpcErr.message}`);
 

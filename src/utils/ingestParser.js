@@ -72,16 +72,32 @@ export function cleanMerchant(raw) {
     .slice(0, MAX_DESCRIPTION);
 }
 
+// Entidades HTML que aparecen en correos en español. Decodificarlas importa:
+// "transacci&oacute;n" sin decodificar no calza con ninguna palabra clave.
+const NAMED_ENTITIES = {
+  nbsp: ' ', amp: '&', lt: ' ', gt: ' ', quot: '"', apos: "'", dollar: '$', euro: '€',
+  aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú', ntilde: 'ñ', uuml: 'ü',
+  Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú', Ntilde: 'Ñ', Uuml: 'Ü',
+  iexcl: '¡', iquest: '¿', bull: '•', middot: '·',
+};
+
+function decodeEntity(match, body) {
+  if (body[0] === '#') {
+    const code = /^#x/i.test(body) ? parseInt(body.slice(2), 16) : parseInt(body.slice(1), 10);
+    // < y > decodificados reabrirían la puerta al HTML que se acaba de quitar.
+    if (!Number.isInteger(code) || code < 32 || code > 0x10ffff || code === 60 || code === 62) return ' ';
+    return code === 160 ? ' ' : String.fromCodePoint(code);
+  }
+  return NAMED_ENTITIES[body] ?? NAMED_ENTITIES[body.toLowerCase()] ?? ' ';
+}
+
 /** Cuerpo de correo (HTML o texto) → texto plano con saltos de línea útiles. */
 export function htmlToText(input) {
   return String(input ?? '')
     .replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ')
     .replace(/<br\s*\/?>|<\/(p|div|tr|td|th|li|h[1-6]|table)>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&#36;|&dollar;/gi, '$')
-    .replace(/&[a-z]+;|&#\d+;/gi, ' ')
+    .replace(/<[^<>]*>/g, ' ')
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/gi, decodeEntity)
     .replace(/[ \t\r]+/g, ' ')
     .replace(/ ?\n ?/g, '\n')
     .replace(/\n{2,}/g, '\n')
@@ -90,22 +106,65 @@ export function htmlToText(input) {
 
 // Clasificación del mensaje. Se evalúa sobre el texto normalizado (minúsculas,
 // sin acentos). El orden importa: un "consumo declinado" NO es un gasto.
+//
+// Las reglas exigen que la palabra clave esté ATADA a la transacción (o a un
+// código numérico, en el caso del OTP). Una palabra suelta no basta: el pie de
+// casi todo correo bancario dice "si no reconoce este consumo…", "nunca
+// comparta su clave o token" o "consumos no autorizados", y con reglas laxas
+// se descartarían todos los consumos legítimos.
+const TX = '(?:consumo|compra|transaccion|cargo|pago)';
 const SKIP_RULES = [
-  ['declined', /declinad|rechazad|denegad|no (fue )?aprobad|no autorizad|fallid/],
-  ['refund', /revers|devolucion|reembolso|anulad|refund/],
-  ['otp', /(codigo|token|clave|pin|otp)[^\n]{0,40}(verificacion|seguridad|temporal|acceso|unico|confirmacion)/],
-  ['payment_or_income', /pago recibido|gracias por (su|tu) pago|pago (a|de) (su|tu) tarjeta|hemos recibido (su|tu) pago|deposito|transferencia recibida|te (enviaron|transfirieron)|credito a (su|tu) cuenta|nomina/],
+  ['declined', new RegExp(`${TX}[^\\n]{0,60}(declinad|rechazad|denegad|no (fue |ha sido )?aprobad|fallid)|(declinad|rechazad|denegad)[^\\n]{0,40}${TX}`)],
+  ['refund', new RegExp(`(reverso|reversad|devolucion|reembolso|anulacion|refund)[^\\n]{0,40}(${TX}|\\bpor\\b)|${TX}[^\\n]{0,40}(reversad|anulad|devuelt)`)],
+  ['otp', /(codigo|token|clave|pin|otp)[^\n]{0,60}(\bes\b|:)\s*\d{4,8}\b/],
+  ['payment_or_income', /pago recibido|gracias por (su|tu) pago|pago (a|de) (su|tu) tarjeta|hemos recibido (su|tu) pago|deposito (recibido|realizado|acreditado|(a|en) (su|tu))|recibiste (un|una) (deposito|transferencia)|transferencia recibida|te (enviaron|transfirieron)|credito a (su|tu) cuenta|(pago de|deposito de) nomina/],
+  // Sacar efectivo mueve dinero de la cuenta al bolsillo: no es un gasto.
+  ['cash_withdrawal', /\bretiro\b|cajero automatico|avance de efectivo|\batm\b/],
 ];
-const PURCHASE_RE = /consumo|compra|transaccion|cargo|retiro|pagaste|pago (en|con)|purchase|charged|spent|payment (at|to)/;
+const PURCHASE_RE = /consumo|compra|transaccion|cargo|pagaste|usaste|utilizaste|uso de (su|tu) tarjeta|pago (en|con)|purchase|charged|spent|payment (at|to)/;
 
 const CURRENCY_PREFIX = '(?:RD\\s?\\$|US\\s?\\$|U\\$S|USD|DOP|EUR|€|\\$)';
 const NUMBER = '\\d[\\d.,]*';
 const AMOUNT_LABELED_RE = new RegExp(`(?:monto|valor|importe|total|amount)[^\\S\\n]*:?[^\\S\\n]*\\n?[^\\S\\n]*(${CURRENCY_PREFIX}?\\s?${NUMBER}(?:\\s?(?:DOP|USD|EUR))?)`, 'i');
-const AMOUNT_PREFIXED_RE = new RegExp(`(${CURRENCY_PREFIX}\\s?${NUMBER})`, 'i');
-const AMOUNT_SUFFIXED_RE = new RegExp(`(${NUMBER}\\s?(?:DOP|USD|EUR))\\b`, 'i');
+const AMOUNT_PREFIXED_RE = new RegExp(`(${CURRENCY_PREFIX}\\s?${NUMBER})`, 'gi');
+const AMOUNT_SUFFIXED_RE = new RegExp(`(${NUMBER}\\s?(?:DOP|USD|EUR))\\b`, 'gi');
+// Cifras que NO son el consumo: el banco suele incluir el saldo disponible, el
+// límite o los puntos en el mismo correo. Se mira qué palabra precede a la cifra.
+const NOT_THE_AMOUNT_RE = /(disponible|balance|saldo|limite( de credito)?|puntos|millas|cashback|minimo)[^\d\n]{0,12}$/;
+
+// Primer monto del texto que no sea un saldo. Devuelve el texto de la cifra.
+function findAmount(text) {
+  const labeled = text.match(AMOUNT_LABELED_RE);
+  if (labeled) return labeled[1];
+  for (const re of [AMOUNT_PREFIXED_RE, AMOUNT_SUFFIXED_RE]) {
+    for (const m of text.matchAll(re)) {
+      const before = normalize(text.slice(Math.max(0, m.index - 40), m.index));
+      if (!NOT_THE_AMOUNT_RE.test(before)) return m[1];
+    }
+  }
+  return null;
+}
 const CURRENCY_LABELED_RE = /moneda[^\S\n]*:?[^\S\n]*\n?[^\S\n]*(RD\s?\$|US\s?\$|DOP|USD|EUR)/i;
 
-const MERCHANT_LABELED_RE = /(?:comercio|establecimiento|merchant|lugar|localidad|descripci[oó]n|detalle)[^\S\n]*:?[^\S\n]*\n?[^\S\n]*([^\n]+)/i;
+// Dos niveles: "Comercio:" es inequívoco; "Descripción:"/"Detalle:" a veces
+// traen "Consumo aprobado" y solo se usan si no hay una etiqueta mejor.
+const LABEL_VALUE = '[^\\S\\n]*:?[^\\S\\n]*\\n?[^\\S\\n]*([^\\n]+)';
+const MERCHANT_LABELED_RES = [
+  new RegExp(`(?:comercio|establecimiento|negocio|merchant)${LABEL_VALUE}`, 'i'),
+  new RegExp(`(?:lugar|localidad|descripci[oó]n|detalle|concepto)${LABEL_VALUE}`, 'i'),
+];
+// Correos sin saltos de línea ("Comercio: UBER Monto: US$12.50 Fecha: …"): el
+// valor termina donde empieza la siguiente etiqueta.
+const NEXT_LABEL_RE = /\s+(?:monto|valor|importe|total|fecha|hora|tarjeta|moneda|estado|tipo|referencia|autorizaci[oó]n|comercio|amount|date|card)\s*:/i;
+
+function findLabeledMerchant(text) {
+  for (const re of MERCHANT_LABELED_RES) {
+    const m = text.match(re);
+    const value = m ? cleanMerchant(m[1].split(NEXT_LABEL_RE)[0]) : '';
+    if (value) return value;
+  }
+  return '';
+}
 // "…por RD$500.00 en SUPERMERCADO NACIONAL el 17/11/2026": el comercio empieza
 // en mayúscula o dígito (evita "en su tarjeta") y corta en el siguiente conector.
 const MERCHANT_INLINE_RE = /\b(?:en|at)\s+([A-Z0-9][^\n,;]*?)(?=\s+(?:el|por|con|on|for|a las|fecha|d[ií]a)\b|\s+\d{1,2}[/-]\d{1,2}|[,;\n]|\.\s|\.$|$)/g;
@@ -119,7 +178,10 @@ function findInlineMerchant(text) {
   return null;
 }
 
-const LAST4_RE = /(?:\*{2,}|[xX•]{2,}|terminad[ao] en|termina en|ending in|finaliza en)[\s\-#]*(\d{4})\b/;
+// Los enmascarados usan exactamente dos caracteres de máscara pegados a los
+// dígitos ("**1234" dentro de "****-****-****-1234"): un cuantificador abierto
+// aquí vuelve la búsqueda cuadrática ante una línea larga de asteriscos.
+const LAST4_RE = /(?:[*xX•]{2}|terminad[ao] en|termina en|ending in|finaliza en)[\s\-#]{0,3}(\d{4})\b/;
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -165,21 +227,21 @@ export function parseNotificationText(raw) {
   }
   if (!PURCHASE_RE.test(flat)) return { kind: 'skip', reason: 'not_a_purchase' };
 
-  const amountMatch = text.match(AMOUNT_LABELED_RE) || text.match(AMOUNT_PREFIXED_RE) || text.match(AMOUNT_SUFFIXED_RE);
-  const amount = amountMatch ? parseAmount(amountMatch[1]) : null;
+  const amountText = findAmount(text);
+  const amount = amountText ? parseAmount(amountText) : null;
   if (!amount) return { kind: 'skip', reason: 'no_amount' };
 
   const currencyLabel = text.match(CURRENCY_LABELED_RE);
-  const currency = detectCurrency(amountMatch[1]) || (currencyLabel ? detectCurrency(currencyLabel[1]) : null);
+  const currency = detectCurrency(amountText) || (currencyLabel ? detectCurrency(currencyLabel[1]) : null);
 
-  const merchantRaw = text.match(MERCHANT_LABELED_RE)?.[1] || findInlineMerchant(text);
+  const merchant = findLabeledMerchant(text) || cleanMerchant(findInlineMerchant(text));
   const last4Match = text.match(LAST4_RE);
 
   return {
     kind: 'purchase',
     amount,
     currency,
-    merchant: merchantRaw ? cleanMerchant(merchantRaw) : '',
+    merchant,
     last4: last4Match ? last4Match[1] : null,
     date: parseDate(text),
   };
@@ -198,28 +260,36 @@ export function parseNotificationText(raw) {
  * @returns {object|null} la tarjeta, o null (débito/efectivo o sin coincidencia)
  */
 export function matchCard(cards = [], { name, last4 } = {}) {
-  const digits = last4 || (String(name ?? '').match(/(\d{4})\s*$/) || [])[1] || null;
+  const digits = (/^\d{4}$/.test(String(last4 ?? '')) ? String(last4) : null)
+    || ((typeof name === 'string' ? name : '').match(/(\d{4})\s*$/) || [])[1] || null;
   if (digits) {
     const byDigits = cards.filter((c) => c.last4 && c.last4 === digits);
     if (byDigits.length === 1) return byDigits[0];
   }
 
-  const q = normalize(name).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const q = normalize(typeof name === 'string' ? name : '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
   if (q.length < 3) return null;
 
+  // Puntaje: coincidencia exacta > contención; a igual tipo, el nombre más largo.
   let best = null;
-  let bestLen = 0;
+  let bestScore = 0;
   let tie = false;
   for (const card of cards) {
     const cardName = normalize(card.name);
     const full = normalize(`${card.bank || ''} ${card.name}`).trim();
     if (cardName.length < 3) continue;
-    const hit = q === cardName || q === full || q.includes(cardName) || cardName.includes(q) || full.includes(q);
-    if (!hit) continue;
-    if (cardName.length > bestLen) { best = card; bestLen = cardName.length; tie = false; }
-    else if (cardName.length === bestLen) tie = true;
+    const exact = q === cardName || q === full;
+    const contains = q.includes(cardName) || cardName.includes(q) || full.includes(q);
+    if (!exact && !contains) continue;
+    const score = (exact ? 1000 : 0) + cardName.length;
+    if (score > bestScore) { best = card; bestScore = score; tie = false; }
+    else if (score === bestScore) tie = true;
   }
-  return tie ? null : best;
+  if (tie || !best) return null;
+  // Si se conocen los 4 dígitos y los de la mejor candidata son otros, es otra
+  // tarjeta (quizá una que no está en FinTrack): mejor ninguna que la equivocada.
+  if (digits && best.last4 && best.last4 !== digits) return null;
+  return best;
 }
 
 /**

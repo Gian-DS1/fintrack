@@ -102,7 +102,7 @@ Corre en los servidores de Google cada 5 minutos, aunque el iPhone esté apagado
            method: 'post',
            contentType: 'application/json',
            headers: { Authorization: 'Bearer ' + token },
-           payload: JSON.stringify({ text: message.getPlainBody(), source: 'email' }),
+           payload: JSON.stringify({ text: message.getPlainBody(), source: 'email', id: message.getId() }),
            muteHttpExceptions: true,
          });
          // 2xx = registrado, duplicado u omitido. 422 = correo sin monto: tampoco
@@ -120,8 +120,9 @@ Corre en los servidores de Google cada 5 minutos, aunque el iPhone esté apagado
 3. **Activadores → Añadir activador** → función `syncBankEmails`, basado en
    tiempo, cada 5 minutos. Autoriza el acceso a Gmail cuando lo pida.
 
-La etiqueta `fintrack` marca los correos ya procesados, así que cada uno se envía
-una sola vez.
+La etiqueta `fintrack` marca los correos ya procesados. Además cada correo viaja
+con su `id` de Gmail, así que aunque se reenvíe (por un fallo a mitad de lote) no
+se registra dos veces.
 
 ## 4. Probar sin teléfono
 
@@ -150,13 +151,14 @@ cualquier otro.
 | `last4` | texto | Últimos 4 dígitos, si los conoces. |
 | `date` | texto | `AAAA-MM-DD` o `dd/mm/aaaa`. Por defecto, hoy (zona `REMINDER_TIMEZONE`). |
 | `text` | texto | Cuerpo crudo de un correo/SMS del banco (HTML o texto, máx. 50 000 caracteres). |
+| `id` | texto | Identificador del mensaje en origen (p. ej. el id del correo). Reenviar el mismo `id` no duplica. Máx. 128 caracteres sin espacios. |
 | `source` | texto | `shortcut` o `email`. Si falta: `shortcut` cuando hay `amount`, `email` cuando solo hay `text`. |
 
 | Respuesta | Significado |
 |-----------|-------------|
 | `201 { status: "created" }` | Gasto registrado. |
 | `200 { status: "duplicate" }` | Ya estaba registrado (otro canal o reintento). |
-| `200 { status: "skipped", reason }` | El mensaje no es un consumo: rechazo, reverso, código OTP, pago a la tarjeta, depósito o promoción. |
+| `200 { status: "skipped", reason }` | El mensaje no es un consumo: rechazo, reverso, código OTP, pago a la tarjeta, depósito, retiro de efectivo o promoción. |
 | `401` | Token ausente, inválido o revocado. |
 | `422` | No se encontró un monto. |
 | `429` | Más de 60 registros automáticos en la última hora. |
@@ -172,9 +174,15 @@ Todas las respuestas `2xx` traen un `message` legible para mostrarlo en una noti
 - **Tarjeta:** últimos 4 dígitos → nombre → (solo si no llegó ninguna pista) la
   que sueles usar en ese comercio. El cashback de la tarjeta se calcula igual
   que en un registro manual.
-- **Duplicados:** mismo monto y misma fecha por *otro* canal automático en 48 h,
-  o por el *mismo* canal en 2 minutos. Dos compras iguales el mismo día por el
-  mismo canal (dos pasajes) sí se registran.
+- **Duplicados:**
+  - *Entre canales* (Apple Pay + correo del mismo pago): mismo monto, fecha
+    igual o contigua, en 48 h, sin tarjetas que se contradigan.
+  - *Mismo canal con `id`* (script de Gmail): el mismo `id` nunca se registra dos veces.
+  - *Mismo canal sin `id`* (atajos): mismo monto y fecha en 2 minutos se trata
+    como un reintento.
+  - Dos compras iguales el mismo día por el mismo canal (dos pasajes) sí se registran.
+- **No es un gasto:** rechazos, reversos, códigos de verificación, pagos a la
+  tarjeta, depósitos y **retiros de efectivo** se omiten.
 - **Otra moneda:** FinTrack no maneja tasas de cambio. Un consumo en una moneda
   distinta a la de tu perfil se registra con el monto original y una nota
   «⚠ Monto original en USD, sin convertir» para que lo corrijas.
@@ -187,6 +195,12 @@ Todas las respuestas `2xx` traen un `message` legible para mostrarlo en una noti
   se registra bien, agrégalo (anonimizado) como caso en
   `src/utils/ingestParser.test.js` y ajusta el patrón.
 - Las fechas `dd/mm` ambiguas se leen en formato local (día primero).
+- Si en un mismo día haces dos compras del **mismo monto**, una con Apple Pay y
+  otra con la tarjeta física, el correo de la segunda se toma por el de la
+  primera y no se registra. Es el costo de no duplicar el caso común.
+- Con los atajos de correo/SMS de iOS (sin `id`), dos consumos idénticos con
+  menos de 2 minutos de diferencia cuentan como uno. El script de Gmail no tiene
+  esta limitación.
 - Los gastos automáticos aparecen en la app al recargarla o al volver a ella
   (se refrescan como mucho una vez por minuto).
 

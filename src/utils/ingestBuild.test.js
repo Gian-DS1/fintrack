@@ -24,7 +24,7 @@ describe('buildIngestTransaction — atajo de Apple Pay (campos explícitos)', (
       row: {
         amount: 1250, date: '2026-11-17', type: 'variable_expense',
         description: 'Supermercados Nacional', categoryId: 'cat-super', cardId: 'card-pop',
-        currency: 'DOP', cashbackEarned: 62.5, notes: null, source: 'shortcut',
+        currency: 'DOP', cashbackEarned: 62.5, notes: null, source: 'shortcut', externalId: null,
       },
       meta: { categoryName: 'Supermercado', cardName: 'MC CCN Plus', foreignCurrency: null },
     });
@@ -47,6 +47,37 @@ describe('buildIngestTransaction — atajo de Apple Pay (campos explícitos)', (
     expect(r.row.date).toBe('2026-11-15');
   });
 
+  it('no usa categorías desactivadas, ni por palabra clave ni por historial', () => {
+    const inactive = categories.map((c) => (c.id === 'cat-transp' ? { ...c, isActive: false } : c));
+    const history = [{ description: 'Uber', categoryId: 'cat-transp', cardId: null, date: '2026-11-01' }];
+    const r = buildIngestTransaction({ amount: 300, merchant: 'Uber' }, ctx({ categories: inactive, history }));
+    expect(r.row.categoryId).toBeNull();
+  });
+
+  it('un texto de rechazo anula el registro aunque venga un monto explícito', () => {
+    expect(buildIngestTransaction({ amount: 500, text: 'Su consumo por RD$500.00 fue declinado.' }, ctx()))
+      .toEqual({ ok: false, skip: 'declined' });
+  });
+
+  it('tolera cuerpos y campos con tipos inesperados sin lanzar', () => {
+    for (const bad of [null, undefined, 5, 'x', [], true]) {
+      expect(buildIngestTransaction(bad, ctx())).toEqual({ ok: false, error: 'missing_amount' });
+    }
+    const r = buildIngestTransaction({ amount: 10, merchant: {}, card: [], last4: {}, date: true, text: 7, source: {} }, ctx());
+    expect(r.row).toMatchObject({ amount: 10, description: 'Apple Pay', cardId: null, date: '2026-11-17', source: 'shortcut' });
+  });
+
+  it('acepta un id de mensaje acotado y descarta los que no son seguros', () => {
+    const id = (value) => buildIngestTransaction({ amount: 5, id: value }, ctx()).row.externalId;
+    expect(id('18c2f0a9b7d1e3f4')).toBe('18c2f0a9b7d1e3f4');
+    expect(id(12345)).toBe('12345');
+    expect(id('  con-espacios-alrededor ')).toBe('con-espacios-alrededor');
+    expect(id('con espacio')).toBeNull();
+    expect(id('x'.repeat(129))).toBeNull();
+    expect(id({})).toBeNull();
+    expect(id('')).toBeNull();
+  });
+
   it('rechaza la petición sin monto ni texto', () => {
     expect(buildIngestTransaction({ merchant: 'Bravo' }, ctx())).toEqual({ ok: false, error: 'missing_amount' });
     expect(buildIngestTransaction(undefined, ctx())).toEqual({ ok: false, error: 'missing_amount' });
@@ -61,7 +92,7 @@ describe('buildIngestTransaction — correo del banco (texto crudo)', () => {
     expect(r.row).toEqual({
       amount: 450, date: '2026-11-16', type: 'variable_expense', description: 'UBER TRIP',
       categoryId: 'cat-transp', cardId: 'card-qik', currency: 'DOP', cashbackEarned: 4.5,
-      notes: null, source: 'email',
+      notes: null, source: 'email', externalId: null,
     });
   });
 

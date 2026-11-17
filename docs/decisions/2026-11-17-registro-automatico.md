@@ -88,8 +88,13 @@ llegan con segundos de diferencia. Un «consultar y luego insertar» desde el
 endpoint dejaría pasar ambos. `ingest_transaction` toma un *advisory lock* por
 usuario y decide dentro de la misma transacción:
 
-- mismo monto y fecha desde **otro** canal automático en 48 h → duplicado;
-- mismo monto y fecha desde el **mismo** canal en 2 min → duplicado (reintento).
+- mismo monto desde **otro** canal automático en 48 h, con fecha igual o
+  contigua → duplicado (la fecha contigua cubre el correo procesado pasada la
+  medianoche);
+- **mismo** canal con el mismo `external_id` → duplicado (el mismo correo,
+  reprocesado). Con id, dos compras idénticas en correos distintos no se pisan;
+- **mismo** canal sin id, mismo monto y fecha en 2 min → duplicado (reintento
+  del atajo, que no tiene un id que mandar).
 
 Se descartó una restricción `UNIQUE` porque dos compras idénticas el mismo día
 son legítimas (dos pasajes, dos cafés). No se deduplica contra registros
@@ -122,13 +127,21 @@ registra el monto original con una nota visible para que el usuario lo corrija.
   (idempotencia); probados duplicado entre canales, reintento, límite por hora,
   aislamiento entre usuarios y que `authenticated`/`anon` no pueden ejecutar la
   función ni modificar tokens ajenos.
-- **Endpoint:** códigos de respuesta recorridos con la API de Supabase simulada.
+- **Endpoint (Vitest, `api/_tests/ingest.test.js`):** contrato HTTP completo con
+  Supabase simulado — autenticación, códigos de respuesta, argumentos de la
+  función SQL y que toda lectura va filtrada por el usuario del token.
+- **Robustez del lector:** 20 000 entradas aleatorias sin excepciones ni filas
+  inválidas, y entradas patológicas de 50 000 caracteres (el fuzzing destapó dos
+  expresiones regulares cuadráticas, ya corregidas y con test de regresión).
+- **Concurrencia:** 8 peticiones simultáneas del mismo pago por ambos canales
+  producen exactamente una fila.
 
 ## Deuda conocida
 
 - El lector de correos se probó con mensajes **sintéticos**. Falta calibrarlo
   con correos reales (anonimizados) de cada banco y fijarlos como casos de prueba.
-- No hay prueba de integración del endpoint contra un Supabase real en CI.
+- El endpoint se prueba con Supabase simulado y el SQL contra PostgreSQL local,
+  pero no hay una prueba de punta a punta contra un Supabase real en CI.
 - Los pasos del Atajo no se pudieron ejecutar en un dispositivo desde el entorno
   de desarrollo; los nombres de los campos de «Entrada del atajo» pueden variar
   según la versión de iOS.

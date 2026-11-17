@@ -42,7 +42,7 @@ export default function AutoIngestCard() {
       await navigator.clipboard.writeText(text);
       toast.success(t('screens.settings.autoIngestCopied'));
     } catch {
-      toast.error(t('screens.settings.autoIngestError'));
+      toast.error(t('screens.settings.autoIngestCopyError'));
     }
   };
 

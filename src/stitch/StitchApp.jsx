@@ -3,6 +3,7 @@
 
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
+import { tr } from '../i18n/runtime';
 import { lazy, Suspense, useEffect, useState } from 'react';
 
 import StitchHead from './StitchHead';
@@ -116,7 +117,7 @@ function AuthGate() {
     if (!user) return undefined;
     let last = Date.now();
     const onVisible = () => {
-      if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return;
+      if (document.visibilityState !== 'visible' || !navigator.onLine || Date.now() - last < 60_000) return;
       last = Date.now();
       fetchTransactions();
     };
@@ -132,7 +133,9 @@ function AuthGate() {
       if (cancelled) return;
       const res = await materializeDue();
       if (!cancelled && res.count > 0) {
-        toast.success(`Se ${res.count === 1 ? 'registró' : 'registraron'} ${res.count} transacción${res.count === 1 ? '' : 'es'} recurrente${res.count === 1 ? '' : 's'}`);
+        toast.success(res.count === 1
+          ? tr('stores.recurring.materializedOne')
+          : tr('stores.recurring.materializedMany').replace('{n}', res.count));
       }
     })();
     return () => { cancelled = true; };

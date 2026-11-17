@@ -122,11 +122,83 @@ describe('parseNotificationText', () => {
     expect(r.merchant).toBe('FARMACIA CAROL');
   });
 
+  it('decodifica entidades HTML antes de buscar palabras clave', () => {
+    const r = parseNotificationText(
+      '<p>Notificaci&oacute;n de transacci&oacute;n</p><p>Monto: RD&#36;1,500.00</p><p>Comercio: CAF&Eacute; SANTO&nbsp;DOMINGO &amp; CO</p>'
+    );
+    expect(r).toMatchObject({ kind: 'purchase', amount: 1500, currency: 'DOP', merchant: 'CAFÉ SANTO DOMINGO & CO' });
+  });
+
+  it('no toma el saldo disponible ni el límite como monto del consumo', () => {
+    expect(parseNotificationText('Su disponible es RD$45,000.00 luego de su compra por RD$1,200.00 en JUMBO').amount).toBe(1200);
+    expect(parseNotificationText('Compra por RD$1,200.00 en JUMBO. Balance disponible: RD$45,000.00').amount).toBe(1200);
+    expect(parseNotificationText('Límite de crédito: RD$90,000.00. Consumo con su tarjeta de crédito por RD$500.00 en BRAVO').amount).toBe(500);
+  });
+
+  it('corta el comercio en la siguiente etiqueta cuando todo viene en una línea', () => {
+    const r = parseNotificationText('Consumo Tarjeta: ****1234 Comercio: UBER TRIP Monto: US$12.50 Fecha: 16/11/2026');
+    expect(r).toEqual({ kind: 'purchase', amount: 12.5, currency: 'USD', merchant: 'UBER TRIP', last4: '1234', date: '2026-11-16' });
+  });
+
+  it('prefiere "Comercio:" sobre "Descripción:" aunque esta aparezca primero', () => {
+    const r = parseNotificationText('Descripción: Consumo aprobado\nComercio: IKEA\nMonto: RD$900.00');
+    expect(r.merchant).toBe('IKEA');
+  });
+
+  it('reconoce "usaste tu tarjeta" y comercios con mayúsculas mixtas', () => {
+    const r = parseNotificationText('¡Hola! Usaste tu tarjeta Qik terminada en 9876 por RD$350.00 en PedidosYa.');
+    expect(r).toMatchObject({ kind: 'purchase', amount: 350, merchant: 'PedidosYa', last4: '9876' });
+  });
+
+  it('un comercio llamado "DEPOSITO …" no se confunde con un depósito recibido', () => {
+    expect(parseNotificationText('Compra por RD$800.00 en DEPOSITO FERRETERO')).toMatchObject({ kind: 'purchase', merchant: 'DEPOSITO FERRETERO' });
+    expect(parseNotificationText('Depósito recibido por RD$800.00, compra no requerida')).toEqual({ kind: 'skip', reason: 'payment_or_income' });
+  });
+
+  it('el pie legal del correo no convierte un consumo en "omitido"', () => {
+    const email = [
+      'Consumo aprobado por RD$500.00 en BRAVO con su tarjeta ****1234.',
+      'Si no reconoce este consumo o no fue autorizado por usted, llámenos al 809-544-5555.',
+      'Nunca comparta su clave, token o código de seguridad. Reporte consumos no autorizados.',
+      'Consulte nuestras políticas de devolución en la web.',
+    ].join('\n');
+    expect(parseNotificationText(email)).toMatchObject({ kind: 'purchase', amount: 500, merchant: 'BRAVO', last4: '1234' });
+  });
+
+  it('distingue rechazos y reversos en ambos órdenes de la frase', () => {
+    expect(parseNotificationText('Transacción rechazada: compra por RD$900.00 en TIENDA')).toEqual({ kind: 'skip', reason: 'declined' });
+    expect(parseNotificationText('Su compra por RD$900.00 en TIENDA no ha sido aprobada')).toEqual({ kind: 'skip', reason: 'declined' });
+    expect(parseNotificationText('Su compra por RD$900.00 en TIENDA fue reversada')).toEqual({ kind: 'skip', reason: 'refund' });
+    expect(parseNotificationText('Devolución por RD$900.00 de su compra en TIENDA')).toEqual({ kind: 'skip', reason: 'refund' });
+    expect(parseNotificationText('Código de compra: 123456. Monto RD$900.00')).toEqual({ kind: 'skip', reason: 'otp' });
+  });
+
+  it('no se degrada con entradas patológicas (regex lineales)', () => {
+    const big = 50_000;
+    const inputs = [
+      `compra RD$5 ${'*'.repeat(big)}`,
+      `compra ${'<'.repeat(big)}`,
+      `compra ${'en A '.repeat(big / 5)}`,
+      `compra RD$${'1,'.repeat(big / 2)}`,
+      `compra RD$5 en A${' '.repeat(big)}x`,
+    ];
+    const start = performance.now();
+    for (const input of inputs) parseNotificationText(input);
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
+  it('nunca lanza con tipos inesperados', () => {
+    for (const bad of [null, undefined, 5, {}, [], true]) {
+      expect(parseNotificationText(bad).kind).toBe('skip');
+    }
+  });
+
   it.each([
     ['declined', 'Su consumo por RD$5,000.00 en TIENDA fue declinado por fondos insuficientes.'],
     ['refund', 'Reverso de consumo por RD$5,000.00 en TIENDA.'],
     ['otp', 'Su código de verificación para la compra de RD$500.00 es 123456.'],
     ['payment_or_income', 'Pago recibido. Gracias por su pago de RD$10,000.00 a su tarjeta ****1234.'],
+    ['cash_withdrawal', 'Retiro en cajero por RD$5,000.00 con su tarjeta ****1234'],
     ['not_a_purchase', 'Aprovecha: RD$500.00 de descuento este fin de semana.'],
     ['no_amount', 'Realizaste una compra en TIENDA con tu tarjeta.'],
     ['empty', '   '],
@@ -158,6 +230,21 @@ describe('matchCard', () => {
 
   it('ante varias coincidencias gana el nombre más específico', () => {
     expect(matchCard(cards, { name: 'Qik Visa' })?.id).toBe('b');
+  });
+
+  it('la coincidencia exacta gana a la contención', () => {
+    expect(matchCard(cards, { name: 'Visa' })?.id).toBe('c');
+  });
+
+  it('unos últimos 4 conocidos descartan la tarjeta cuyo nombre casa pero tiene otros dígitos', () => {
+    expect(matchCard(cards, { name: 'Qik Visa', last4: '5555' })).toBeNull();
+    // …pero una tarjeta sin dígitos guardados sí puede casar por nombre.
+    expect(matchCard(cards, { name: 'BHD Visa', last4: '5555' })?.id).toBe('c');
+  });
+
+  it('ignora nombres y dígitos que no son texto', () => {
+    expect(matchCard(cards, { name: {}, last4: [] })).toBeNull();
+    expect(matchCard(cards, { name: true })).toBeNull();
   });
 
   it('devuelve null sin pista, sin coincidencia o con empate real', () => {

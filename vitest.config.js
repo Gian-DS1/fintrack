@@ -3,7 +3,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/**/*.test.{js,jsx}'],
+    include: ['src/**/*.test.{js,jsx}', 'api/**/*.test.js'],
     // Los stores importan src/lib/supabase.js, que crea el cliente al cargar el
     // módulo y lanza si la URL está vacía. En tests no hay .env (ni debe haberlo:
     // el repo no versiona credenciales), así que inyectamos un proyecto ficticio.

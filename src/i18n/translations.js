@@ -824,6 +824,7 @@ const translations = {
         autoIngestCopyWarning: 'Cópialo ahora: no se volverá a mostrar.',
         autoIngestCopy: 'Copiar',
         autoIngestCopied: 'Copiado',
+        autoIngestCopyError: 'No se pudo copiar. Selecciónalo y cópialo a mano.',
         autoIngestEndpoint: 'URL del atajo',
         autoIngestDone: 'Listo, ya lo guardé',
         autoIngestEmpty: 'Aún no tienes tokens.',
@@ -957,6 +958,8 @@ const translations = {
       },
       recurring: {
         createError: 'Error al crear la recurrencia',
+        materializedOne: 'Se registró 1 transacción recurrente',
+        materializedMany: 'Se registraron {n} transacciones recurrentes',
       },
       savings: {
         loadError: 'No se pudieron cargar las metas de ahorro',
@@ -1866,6 +1869,7 @@ const translations = {
         autoIngestCopyWarning: 'Copy it now: it won’t be shown again.',
         autoIngestCopy: 'Copy',
         autoIngestCopied: 'Copied',
+        autoIngestCopyError: 'Could not copy. Select it and copy it manually.',
         autoIngestEndpoint: 'Shortcut URL',
         autoIngestDone: 'Done, I saved it',
         autoIngestEmpty: 'You have no tokens yet.',
@@ -1999,6 +2003,8 @@ const translations = {
       },
       recurring: {
         createError: 'Error creating the recurrence',
+        materializedOne: '1 recurring transaction was logged',
+        materializedMany: '{n} recurring transactions were logged',
       },
       savings: {
         loadError: 'Could not load savings goals',
