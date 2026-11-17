@@ -1,6 +1,6 @@
 // FinTrack — Default Categories for Dominican Republic
 
-import { generateId } from '../utils/formatters';
+import { generateId } from '../utils/formatters.js';
 
 export const defaultCategories = [
   // ── Income ──────────────────────────────────────────────────

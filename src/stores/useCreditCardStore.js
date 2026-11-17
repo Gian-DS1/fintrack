@@ -25,6 +25,9 @@ const mapFromDb = (c) => ({
   payments: Array.isArray(c.payments) ? c.payments : [],
   cashbackRules: Array.isArray(c.cashback_rules) ? c.cashback_rules : [],
   catalogId: c.catalog_id || null,
+  // Últimos 4 dígitos: casan los correos del banco con esta tarjeta en el
+  // registro automático (/api/ingest). Opcional.
+  last4: c.last4 || '',
   createdAt: c.created_at,
 });
 
@@ -69,6 +72,7 @@ const useCreditCardStore = create(
             payments: card.payments || [],
             cashbackRules: Array.isArray(card.cashbackRules) ? card.cashbackRules : [],
             catalogId: card.catalogId || null,
+            last4: card.last4 || '',
             createdAt: card.createdAt || new Date().toISOString(),
           };
           set((state) => ({ cards: [...state.cards, row] }));
@@ -89,6 +93,9 @@ const useCreditCardStore = create(
           cashback_rules: Array.isArray(card.cashbackRules) ? card.cashbackRules : [],
           catalog_id: card.catalogId || null,
         };
+        // Solo se envía si tiene valor: así crear una tarjeta sigue funcionando
+        // en una base donde aún no se corrió add_auto_ingest.sql.
+        if (card.last4) payload.last4 = card.last4;
 
         const { data, error } = await supabase.from('credit_cards').insert(payload).select().single();
         if (error) {
@@ -115,6 +122,9 @@ const useCreditCardStore = create(
         if (updates.openingBalance !== undefined) dbUpdates.opening_balance = Number(updates.openingBalance) || 0;
         if (updates.cashbackRules !== undefined) dbUpdates.cashback_rules = updates.cashbackRules;
         if (updates.catalogId !== undefined) dbUpdates.catalog_id = updates.catalogId || null;
+        // last4 solo viaja si hay algo que escribir o que borrar (ver addCard).
+        const prevLast4 = get().cards.find((c) => c.id === id)?.last4 || '';
+        if (updates.last4 !== undefined && (updates.last4 || prevLast4)) dbUpdates.last4 = updates.last4 || null;
 
         const { error } = await supabase.from('credit_cards').update(dbUpdates).eq('id', id);
         if (error) {

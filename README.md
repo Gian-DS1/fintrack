@@ -45,7 +45,7 @@ debts, savings goals and reminders — multi-currency, bilingual, installable as
 | | |
 |---|---|
 | **Budget** | Three progressive levels — Tracking (just log), the 50/30/20 rule, and **zero-based** (assign every unit of currency until "To Assign" hits 0). Auto-suggests envelopes from your last 3-month average and copies the previous month in one click. |
-| **Transactions** | Fast entry with auto-categorization that learns from your history, plus **recurring transactions** that create themselves. Filter by search, type, category, date range and card used (including "no card" for cash); bulk actions and undo. |
+| **Transactions** | Fast entry with auto-categorization that learns from your history, plus **recurring transactions** that create themselves. **Automatic logging**: an iOS Shortcut sends every Apple Pay payment, and bank notification emails are parsed into expenses — deduplicated across both channels ([setup guide](docs/AUTO_INGEST.md)). Filter by search, type, category, date range and card used (including "no card" for cash); bulk actions and undo. |
 | **Credit cards** | Automatic statement/payment cycles, rule-based cashback, partial payments, statement history, and a card catalog with predefined cashback. |
 | **Debts** | Balances, interest, payment history linked to real transactions, avalanche strategy, and an estimated months-to-payoff. |
 | **Savings & goals** | Goals with logged contributions (each one creates its own linked transaction), projected completion date, optional horizon (short/medium/long) and history with undo. |
@@ -99,7 +99,7 @@ to regenerate them from the current commit.
 | Charts | Recharts (lazy — only downloaded by screens that draw charts) |
 | Icons | Material Symbols (UI) + JoyPixels v10 PNGs from jsDelivr (category emojis; the unicode→codepoint mapping is local, see `src/stitch/emojiCodepoint.js` — no runtime emoji library) |
 | Animation | Framer Motion |
-| Serverless | Vercel functions (`/api/parse-pdf` imports statements; `/api/feedback` receives feedback; `/api/cron/card-reminders` emails credit-card and loan payment reminders on a daily cron) |
+| Serverless | Vercel functions (`/api/parse-pdf` imports statements; `/api/feedback` receives feedback; `/api/cron/card-reminders` emails credit-card and loan payment reminders on a daily cron; `/api/ingest` logs expenses sent by iOS Shortcuts or parsed from bank emails, authenticated with personal tokens) |
 | Tests | Vitest (unit) + Playwright (E2E) |
 | CI | GitHub Actions — lint, unit tests, production build and E2E on every push and PR |
 
@@ -113,9 +113,10 @@ fintrack/
 │   ├── workflows/ci.yml  # CI: lint · unit tests · build · E2E
 │   ├── ISSUE_TEMPLATE/   # Bug report and feature request forms
 │   └── dependabot.yml    # Weekly npm updates (grouped) + monthly Actions
-├── api/                  # Vercel serverless functions (parse-pdf, feedback)
+├── api/                  # Vercel serverless functions (parse-pdf, feedback, ingest, cron)
 ├── docs/
 │   ├── SECURITY.md       # Security measures and design decisions
+│   ├── AUTO_INGEST.md    # Setup guide: automatic logging (Apple Pay shortcut, bank emails)
 │   ├── decisions/        # Design docs and TDD evidence for the trickier features
 │   └── screenshots/      # README images (regenerate: npm run screenshots)
 ├── public/
@@ -208,7 +209,8 @@ To sign in and persist data you need your own Supabase project:
 >
 > The `/api` serverless functions accept **optional** variables without the `VITE_` prefix
 > (they live only on the server): `WEB3FORMS_ACCESS_KEY` for the feedback form and
-> `STATEMENT_SKIP_PATTERNS` for the PDF importer. The web app works without them.
+> `STATEMENT_SKIP_PATTERNS` for the PDF importer, and `SUPABASE_SERVICE_ROLE_KEY` for payment
+> reminders and automatic expense logging. The web app works without them.
 > See [`.env.example`](.env.example).
 
 ### 3. Scripts

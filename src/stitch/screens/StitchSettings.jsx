@@ -15,6 +15,7 @@ import { currencyOptions } from '../../utils/currencyOptions';
 import StitchSelect from '../StitchSelect';
 import StitchCurrencyInput from '../StitchCurrencyInput';
 import StatementImportModal from './StatementImportModal';
+import AutoIngestCard from './settings/AutoIngestCard';
 import { demoSetInitialCashBalance, demoSetRemindersEnabled, demoSetReminderDaysBefore } from '../demoMode';
 import { supabase } from '../../lib/supabase';
 
@@ -329,6 +330,10 @@ export default function StitchSettings() {
           </div>
           <span className="font-label-sm text-label-sm text-text-muted">{t('screens.settings.remindersHelp')}</span>
         </Stagger.Item>
+
+        {/* Registro automático: tokens para el Atajo de iOS (Apple Pay y
+            correos del banco). Ver api/ingest.js y docs/AUTO_INGEST.md. */}
+        <AutoIngestCard />
 
       </Stagger>
 

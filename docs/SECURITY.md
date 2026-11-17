@@ -88,6 +88,22 @@ styles from jsDelivr remain blocked.
 - `api/parse-pdf.js`: requires a valid **Bearer token** (verified against Supabase),
   limits the PDF size (~6MB, anti-DoS), sanitizes the extracted text, and returns
   **generic errors** to the client (the detail only goes to the server logs).
+- `api/ingest.js` (automatic expense logging): called by iOS Shortcuts and mail
+  scripts, which cannot hold a Supabase session, so it authenticates with a
+  **personal ingest token** instead.
+  - Tokens are generated in the browser (256 bits), shown once, and only their
+    **SHA-256** is stored (`ingest_tokens`). Clients can list, create and delete
+    their own rows; there is no `UPDATE` grant.
+  - **Write-only scope:** a token can create expenses; the endpoint never returns
+    user data beyond an echo of what it just stored.
+  - Runs with the `service_role` key, so it **fails closed** (503) when the key is
+    missing and scopes every query to the `user_id` resolved from the token.
+  - The single write path is the SQL function `ingest_transaction`
+    (`SECURITY INVOKER`, executable by `service_role` only): atomic
+    cross-channel deduplication under a per-user advisory lock and a cap of 60
+    automatic entries per hour.
+  - Email bodies are parsed in memory and are **neither stored nor logged**.
+  - Design rationale: [`docs/decisions/2026-11-17-registro-automatico.md`](decisions/2026-11-17-registro-automatico.md).
 
 ## Secrets
 - `.env` is in `.gitignore`; only `.env.example` is versioned (without real values).

@@ -478,7 +478,7 @@ export default function StitchLedger() {
                       <td className="py-sm px-md">
                         {/* break-words (sin truncate): descripciones y notas
                             largas envuelven en varias líneas, nunca "…". */}
-                        <div className="text-on-surface font-medium break-words max-w-[280px]">{t.description || '—'}</div>
+                        <div className="text-on-surface font-medium break-words max-w-[280px]">{t.description || '—'}<AutoBadge source={t.source} /></div>
                         {t.notes && <div className="font-mono-data text-mono-data text-text-muted mt-0.5 break-words max-w-[280px]">{t.notes}</div>}
                       </td>
                       <td className="py-sm px-md text-on-surface-variant"><div className="max-w-[220px]">{catCell(t.categoryId)}</div></td>
@@ -547,7 +547,7 @@ export default function StitchLedger() {
                           </span>
                           <span className="flex-1 min-w-0">
                             {/* Todo envuelve (break-words), nada se trunca. */}
-                            <span className="block text-on-surface font-medium break-words">{t.description || '—'}</span>
+                            <span className="block text-on-surface font-medium break-words">{t.description || '—'}<AutoBadge source={t.source} /></span>
                             <span className="block font-mono-data text-mono-data text-text-muted normal-case tracking-normal mt-[3px] break-words">
                               {formatDate(t.date)}{cat ? ` · ${cat.name}` : ''}
                             </span>
@@ -794,6 +794,18 @@ function BulkBar({ count, categories, cards, onCategory, onCard, onDelete, onCle
 
 // Chip del tipo de transacción en las filas del listado (tabla y tarjetas
 // móviles comparten exactamente el mismo estilo).
+// Marca los consumos que entraron solos (Atajo de Apple Pay o correo del
+// banco, ver /api/ingest) para que el usuario sepa cuáles conviene revisar.
+function AutoBadge({ source }) {
+  if (!source || source === 'manual') return null;
+  const label = tr('screens.ledger.autoLogged');
+  return (
+    <span title={label} aria-label={label} className="inline-flex align-middle ml-xs text-primary">
+      <MS name={source === 'email' ? 'mail' : 'contactless'} className="!text-[14px]" />
+    </span>
+  );
+}
+
 function TypeChip({ type }) {
   return (
     <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm bg-surface-container-high border border-border-subtle font-mono-data text-[9px] text-on-surface-variant uppercase tracking-wider whitespace-nowrap">

@@ -17,7 +17,7 @@ import { Modal, Field, FormActions, inputCls } from '../../formUi';
 import CashbackEditor from './CashbackEditor';
 
 const COLORS = ['#bec2ff', '#50d8e9', '#bdd200', '#ffb689', '#ffb4ab', '#9aa0ff', '#e9a0d8'];
-const blank = { name: '', bank: '', cutoffDay: '', dueDay: '', color: '#bec2ff', openingBalance: '', cashbackRules: [], catalogId: null };
+const blank = { name: '', bank: '', cutoffDay: '', dueDay: '', color: '#bec2ff', openingBalance: '', cashbackRules: [], catalogId: null, last4: '' };
 
 const dayCls = 'w-full bg-surface-container-lowest border border-border-subtle rounded py-sm px-md font-body-md text-body-md text-on-surface focus:outline-none focus:border-primary inner-glow';
 
@@ -73,7 +73,7 @@ export default function CardForm({ editing, onClose }) {
     }
     // Preserva reglas escalonadas (tiers) y planas (percentage); descarta vacías.
     const cashbackRules = normalizeCashbackRules(form.cashbackRules);
-    const payload = { name: form.name, bank: form.bank, cutoffDay, dueDay, color: form.color, openingBalance: Number(form.openingBalance) || 0, cashbackRules, catalogId: form.catalogId || null };
+    const payload = { name: form.name, bank: form.bank, cutoffDay, dueDay, color: form.color, openingBalance: Number(form.openingBalance) || 0, cashbackRules, catalogId: form.catalogId || null, last4: /^\d{4}$/.test(form.last4) ? form.last4 : '' };
 
     if (editing) await updateCard(editing.id, payload);
     else await addCard(payload);
@@ -137,6 +137,15 @@ export default function CardForm({ editing, onClose }) {
           <StitchCurrencyInput value={form.openingBalance} onChange={(v) => set({ openingBalance: v })} placeholder="0" className={inputCls} />
           <span className="font-mono-data text-mono-data text-text-muted normal-case tracking-normal mt-xs block">
             {t('screens.cards.openingBalanceHint')}
+          </span>
+        </Field>
+
+        {/* Últimos 4 dígitos: identifican la tarjeta en los correos del banco
+            (registro automático de gastos). Opcional. */}
+        <Field label={t('screens.cards.last4Label')}>
+          <input inputMode="numeric" value={form.last4} onChange={(e) => set({ last4: e.target.value.replace(/\D/g, '').slice(0, 4) })} className={dayCls} placeholder="1234" />
+          <span className="font-mono-data text-mono-data text-text-muted normal-case tracking-normal mt-xs block">
+            {t('screens.cards.last4Hint')}
           </span>
         </Field>
 

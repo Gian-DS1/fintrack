@@ -163,6 +163,30 @@ due-today one.
 - **Writes:** none attempted against the missing table.
 - **Settings:** unaffected — no new columns, no new UI.
 
+## Automatic expense logging (2026-11-17)
+
+**`add_auto_ingest.sql`** — powers `/api/ingest` (iOS Shortcuts for Apple Pay and
+bank notification emails; see [`docs/AUTO_INGEST.md`](../docs/AUTO_INGEST.md)).
+Idempotent and additive:
+
+- `transactions.source` (`manual` | `shortcut` | `email`, default `manual`).
+- `credit_cards.last4` (nullable) — matches bank emails to a card.
+- `ingest_tokens` — personal tokens; only the SHA-256 is stored. RLS "only my
+  rows", with `select/insert/delete` for `authenticated` (no `update`).
+- `ingest_transaction(...)` — atomic insert with cross-channel deduplication and
+  a 60-per-hour cap. Executable by `service_role` only.
+
+Also requires `SUPABASE_SERVICE_ROLE_KEY` in the Vercel project (already needed
+by the reminders cron).
+
+### What happens if you deploy the code BEFORE running this migration?
+- **Reads:** safe. Existing rows have no `source`/`last4`; the UI treats them as
+  manual entries and cards without digits.
+- **Writes:** cards save normally as long as "Last 4 digits" is left empty (the
+  column is only sent when it has a value). Generating a token in Settings fails
+  with a clear toast.
+- **Endpoint:** `/api/ingest` answers `503` and stores nothing.
+
 ## Previous migrations (already applied in historical production)
 
 `schema.sql` is the canonical source of truth (idempotent; it already includes the

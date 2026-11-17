@@ -59,6 +59,7 @@ create table if not exists public.credit_cards (
   payments       jsonb not null default '[]'::jsonb,  -- abonos / pagos parciales [{ id, amount, date, note }]
   cashback_rules jsonb not null default '[]'::jsonb,  -- [{ categoryId, percentage }]
   catalog_id     text,                                 -- id del template del catálogo (NULL = personalizada)
+  last4          text,                                 -- últimos 4 dígitos (casa los correos del banco; ver add_auto_ingest.sql)
   created_at     timestamptz not null default now()
 );
 
@@ -75,6 +76,7 @@ create table if not exists public.transactions (
   notes           text,
   currency        text not null default 'DOP',
   cashback_earned numeric not null default 0,
+  source          text not null default 'manual',   -- manual | shortcut | email (registro automático)
   created_at      timestamptz not null default now(),
   constraint transactions_type_check check (type in ('income','expense','fixed_expense','variable_expense','savings')),
   constraint transactions_amount_positive check (amount >= 0)
@@ -267,3 +269,142 @@ begin
     );
   end loop;
 end $$;
+
+-- ============================================================================
+-- Registro automático de gastos (Atajos de iOS / correos del banco).
+-- Copia de supabase/add_auto_ingest.sql: tokens personales con RLS propia (sin
+-- UPDATE para clientes) y la función de inserción atómica que usa /api/ingest.
+-- Guía y decisiones de diseño: docs/AUTO_INGEST.md.
+-- ============================================================================
+
+-- ── 1. Origen de la transacción ─────────────────────────────────────────────
+alter table public.transactions
+  add column if not exists source text not null default 'manual';
+
+-- ── 2. Últimos 4 dígitos de la tarjeta ──────────────────────────────────────
+-- Los correos del banco identifican la tarjeta por sus últimos 4 dígitos, no
+-- por el nombre que el usuario le puso en FinTrack. Opcional (NULL = sin dato).
+alter table public.credit_cards
+  add column if not exists last4 text;
+
+-- ── 3. Tokens de ingesta ────────────────────────────────────────────────────
+-- El token se genera en el navegador y se muestra una sola vez; aquí vive solo
+-- su hash. token_hint (últimos 4 caracteres) sirve para reconocerlo en la UI.
+create table if not exists public.ingest_tokens (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  name         text not null default 'iPhone',
+  token_hash   text not null unique,
+  token_hint   text not null,
+  created_at   timestamptz not null default now(),
+  last_used_at timestamptz
+);
+
+create index if not exists ingest_tokens_user_id_idx on public.ingest_tokens (user_id);
+
+-- RLS: el usuario lista, crea y revoca SUS tokens. No hay UPDATE para clientes:
+-- un token no se edita, se revoca y se crea otro (last_used_at lo escribe el
+-- endpoint con service_role, que salta RLS).
+do $$
+begin
+  execute 'alter table public.ingest_tokens enable row level security;';
+  execute 'drop policy if exists ingest_tokens_own on public.ingest_tokens;';
+  execute
+    'create policy ingest_tokens_own on public.ingest_tokens for all to authenticated
+       using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);';
+  execute 'revoke all on public.ingest_tokens from anon, authenticated;';
+  execute 'grant select, insert, delete on public.ingest_tokens to authenticated;';
+  execute 'grant select, insert, update, delete on public.ingest_tokens to service_role;';
+end $$;
+
+-- ── 4. Inserción atómica con deduplicación ──────────────────────────────────
+-- Un mismo consumo puede llegar por DOS canales casi a la vez: el toque de
+-- Apple Pay dispara el atajo y, segundos después, llega el correo del banco.
+-- Comprobar-e-insertar desde el endpoint tendría una carrera, así que se hace
+-- aquí bajo un advisory lock por usuario (se libera al terminar la transacción).
+--
+-- Se considera duplicado, dentro del mismo día y con el mismo monto:
+--   - otro canal automático en las últimas 48 h (toque + correo del mismo pago),
+--     siempre que las tarjetas no se contradigan;
+--   - el mismo canal en los últimos 2 minutos (reintento del atajo).
+-- Dos compras legítimas iguales el mismo día por el mismo canal (dos pasajes)
+-- sí se registran: por eso la ventana del mismo canal es corta.
+--
+-- Límite: 60 registros automáticos por usuario por hora. Un token filtrado no
+-- puede inundar la cuenta, y un atajo en bucle se corta solo.
+--
+-- Devuelve { status: 'created' | 'duplicate' | 'rate_limited', id }.
+create or replace function public.ingest_transaction(
+  p_user_id     uuid,
+  p_amount      numeric,
+  p_date        date,
+  p_type        text,
+  p_description text,
+  p_category_id uuid,
+  p_card_id     uuid,
+  p_currency    text,
+  p_cashback    numeric,
+  p_notes       text,
+  p_source      text
+) returns jsonb
+language plpgsql
+set search_path = public
+as $$
+declare
+  v_recent integer;
+  v_id     uuid;
+begin
+  if p_source not in ('shortcut', 'email') then
+    raise exception 'ingest_transaction: source inválido (%)', p_source;
+  end if;
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'ingest_transaction: monto inválido';
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended(p_user_id::text, 0));
+
+  select count(*) into v_recent
+  from public.transactions
+  where user_id = p_user_id
+    and source <> 'manual'
+    and created_at > now() - interval '1 hour';
+  if v_recent >= 60 then
+    return jsonb_build_object('status', 'rate_limited', 'id', null);
+  end if;
+
+  select id into v_id
+  from public.transactions
+  where user_id = p_user_id
+    and date = p_date
+    and amount = p_amount
+    and source <> 'manual'
+    and (
+      (source <> p_source
+        and created_at > now() - interval '48 hours'
+        and (card_id is null or p_card_id is null or card_id = p_card_id))
+      or
+      (source = p_source and created_at > now() - interval '2 minutes')
+    )
+  order by created_at desc
+  limit 1;
+  if v_id is not null then
+    return jsonb_build_object('status', 'duplicate', 'id', v_id);
+  end if;
+
+  insert into public.transactions
+    (user_id, category_id, card_id, amount, type, description, date, notes, currency, cashback_earned, source)
+  values
+    (p_user_id, p_category_id, p_card_id, p_amount, p_type, p_description, p_date, p_notes,
+     coalesce(p_currency, 'DOP'), coalesce(p_cashback, 0), p_source)
+  returning id into v_id;
+
+  return jsonb_build_object('status', 'created', 'id', v_id);
+end;
+$$;
+
+-- Solo el endpoint (service_role) puede ejecutarla. Además es SECURITY INVOKER:
+-- aunque un cliente lograra invocarla, RLS le impediría escribir filas ajenas.
+revoke all on function public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text)
+  from public, anon, authenticated;
+grant execute on function public.ingest_transaction(uuid, numeric, date, text, text, uuid, uuid, text, numeric, text, text)
+  to service_role;

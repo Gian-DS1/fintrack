@@ -4,7 +4,7 @@
 // categoría y tarjeta según lo que eligió las veces anteriores.
 // La moneda es única por perfil (currencyRuntime) y no se sugiere desde aquí.
 // Funciones puras, sin React ni stores (misma convención que autoCategorize).
-import { normalize } from './defaultCategories';
+import { normalize } from './defaultCategories.js';
 
 // Por debajo de esto el matcheo es ruido ("el", "la", iniciales).
 const MIN_LEN = 4;

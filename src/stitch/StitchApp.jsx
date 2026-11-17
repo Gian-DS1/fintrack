@@ -109,6 +109,21 @@ function AuthGate() {
     fetchPrefs();
   }, [user, fetchCategories, fetchTransactions, fetchBudgets, fetchBudgetGroups, fetchGoals, fetchDebtsAndPayments, fetchCards, fetchPrefs]);
 
+  // El registro automático (/api/ingest) crea transacciones mientras la app
+  // está en segundo plano. Al volver a ella (típico: pagar con Apple Pay y abrir
+  // la PWA) se recargan, como mucho una vez por minuto.
+  useEffect(() => {
+    if (!user) return undefined;
+    let last = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 60_000) return;
+      last = Date.now();
+      fetchTransactions();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [user, fetchTransactions]);
+
   useEffect(() => {
     if (!user) return;
     let cancelled = false;
