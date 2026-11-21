@@ -33,6 +33,33 @@ test.describe('Flujo principal: acceso → dashboard', () => {
     await expect(page.getByText(/Recordatorios/i).first()).toBeVisible();
   });
 
+  test('el Resumen abre con la celda «Dinero real»: número, efectivo y saldo de tarjetas', async ({ page }) => {
+    await openLanding(page);
+    await enterDemo(page);
+
+    // Es la PRIMERA celda del grid, antes del hero del patrimonio.
+    const primeraCelda = page.locator('[data-tour="dashboard-grid"] > *').first();
+    await expect(primeraCelda.getByText('Dinero real', { exact: true })).toBeVisible();
+    await expect(primeraCelda.getByText('Efectivo', { exact: true })).toBeVisible();
+    await expect(primeraCelda.getByText('Saldo de tarjetas', { exact: true })).toBeVisible();
+
+    // El demo siembra abonos: arranca sano, sin el estado crítico.
+    await expect(page.getByText(/Tus tarjetas superan tu efectivo/i)).toHaveCount(0);
+  });
+
+  test('a 375 px la celda «Dinero real» no provoca scroll horizontal', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openLanding(page);
+    await enterDemo(page);
+    await skipTour(page);
+
+    await expect(page.getByText('Dinero real', { exact: true })).toBeVisible();
+    const sobrante = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sobrante).toBeLessThanOrEqual(0);
+  });
+
   test('desde el dashboard se puede navegar a Transacciones', async ({ page }) => {
     // Cada test arranca una página nueva, así que repetimos el acceso desde la
     // landing y cerramos el tutorial, cuyo overlay taparía el menú.

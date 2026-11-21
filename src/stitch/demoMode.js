@@ -15,6 +15,7 @@ import useCreditCardStore from '../stores/useCreditCardStore';
 import usePrefsStore from '../stores/usePrefsStore';
 import { defaultCategories } from '../data/defaultCategories';
 import { setRuntimeCurrency } from '../utils/currencyRuntime';
+import { getCardCycles } from '../utils/creditCards';
 import { isLocalhost, setDemoFlag, setFreshFlag, clearDemoFlags } from './demoFlag';
 
 // La detección del modo vive en demoFlag.js, que no importa nada del proyecto:
@@ -214,8 +215,38 @@ const debts = [
   { id: 'd2', creditorName: 'Tarjeta departamental', originalAmount: 45000, currentBalance: 18000, interestRate: 6.0, monthlyPayment: 3000, due_date: dayOf(25), status: 'active', currency: 'DOP', createdAt: '' },
 ];
 
+// Abonos de la tarjeta demo: el estado de cuenta de cada corte ya cerrado se paga
+// completo (neto de cashback) en su fecha de pago. Sin ellos la tarjeta
+// arrastraría 6 meses de consumo sin pagar, algo que ningún usuario real tiene. Si
+// el último estado aún no vence, queda pendiente (conserva el recordatorio demo).
+// Todo se calcula con fechas relativas a hoy, como el resto del seed.
+function buildDemoCardPayments(card, cardTransactions) {
+  const payments = [];
+  for (let back = 0; back <= 6; back++) {
+    // El día de corte siempre existe en el mes (≤ 28), así que no hay desbordes.
+    const cycles = getCardCycles(card, new Date(yearIdx, monthIdx - back, card.cutoffDay));
+    if (cycles.closedEndISO > todayIso || cycles.dueDateISO > todayIso) continue;
+    const amount = cardTransactions.reduce((sum, t) => (
+      t.cardId === card.id && t.date >= cycles.closedStartISO && t.date <= cycles.closedEndISO
+        ? sum + t.amount - t.cashbackEarned
+        : sum
+    ), 0);
+    if (amount <= 0) continue;
+    payments.push({
+      id: `p-demo-${cycles.closedEndISO}`,
+      amount: Math.round(amount * 100) / 100,
+      date: cycles.dueDateISO,
+      note: '',
+      savingsUsed: [],
+    });
+  }
+  return payments;
+}
+
+const visaDemo = { id: 'cc1', name: 'Visa Popular', bank: 'Banco Popular', cutoffDay: 20, dueDay: 5, color: '#bec2ff', paidCycles: [], cashbackRules: [{ categoryId: 'all', percentage: 1 }], catalogId: null, createdAt: '' };
+
 const cards = [
-  { id: 'cc1', name: 'Visa Popular', bank: 'Banco Popular', cutoffDay: 20, dueDay: 5, color: '#bec2ff', paidCycles: [], payments: [], cashbackRules: [{ categoryId: 'all', percentage: 1 }], catalogId: null, createdAt: '' },
+  { ...visaDemo, payments: buildDemoCardPayments(visaDemo, transactions) },
 ];
 
 // Siembra todos los stores con los datos demo y marca loading=false.

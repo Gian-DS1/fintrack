@@ -52,3 +52,6 @@ Estados/
 Estado de cuenta*.pdf
 
 tmp-verify-*
+
+# Tickets y notas de trabajo locales
+.scratch/

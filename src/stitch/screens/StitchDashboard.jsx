@@ -15,8 +15,9 @@ import { getBudgetSummary } from '../../utils/calculations';
 import { getNextLoanDueDate } from '../../utils/loanReminders';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { monthShort } from '../../i18n/runtime';
-import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getWealthTimeline, getCardReminders } from './dashboard/selectors';
+import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getWealthTimeline, getCardReminders, getRealMoney } from './dashboard/selectors';
 import { BentoCell } from './dashboard/dashboardUi';
+import RealMoneyCard from './dashboard/RealMoneyCard';
 import WealthTrendChart from './dashboard/WealthTrendChart';
 import CategoryDonut from './dashboard/CategoryDonut';
 import BudgetBar from './dashboard/BudgetBar';
@@ -99,6 +100,12 @@ export default function StitchDashboard() {
   // que ya tenían las metas, no solo los aportes registrados). El selector lo usa
   // para que el "Ahorro total" del gráfico cuadre con la pestaña de Ahorros.
   const currentSavings = useMemo(() => goals.reduce((sum, g) => sum + (Number(g.currentAmount) || 0), 0), [goals]);
+  // Dinero real de HOY (efectivo − saldo pendiente de todas las tarjetas). Usa
+  // `now`: no depende del mes seleccionado ni del punto fijado en la línea.
+  const realMoney = useMemo(
+    () => getRealMoney(transactions, initialCashBalance, cards, now),
+    [transactions, initialCashBalance, cards, now],
+  );
   const wealthSeries = useMemo(
     () => getWealthTimeline(transactions, initialCashBalance, wealthRange, now, cards, currentSavings),
     [transactions, initialCashBalance, wealthRange, now, cards, currentSavings],
@@ -166,6 +173,11 @@ export default function StitchDashboard() {
       )}
 
       <Stagger data-tour="dashboard-grid" className="grid grid-cols-2 md:grid-cols-12 gap-sm auto-rows-min">
+        {/* 0 · DINERO REAL a todo el ancho, antes del hero: siempre de hoy. */}
+        <Stagger.Item className="col-span-2 md:col-span-12">
+          <RealMoneyCard data={realMoney} totalSavings={currentSavings} />
+        </Stagger.Item>
+
         {/* 1 · HERO a TODO EL ANCHO (col-12): el gráfico del patrimonio es el
             protagonista y ocupa toda la página (estilo Whisper). Jerarquía:
             título → hero (número + toggle) + gráfico grande → pills de rango →

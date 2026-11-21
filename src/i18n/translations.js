@@ -285,6 +285,15 @@ const translations = {
       months: 'meses',
       expensesAnalysis: 'Análisis de gastos',
       registerIncome: 'Registra ingresos para evaluar tu salud financiera.',
+      realMoney: 'Dinero real',
+      realMoneyInfo: 'Tu efectivo menos todo lo que debes en tus tarjetas (lo facturado y lo del ciclo abierto). Es lo que te queda si hoy pagaras tus tarjetas completas.',
+      cash: 'Efectivo',
+      cardBalance: 'Saldo de tarjetas',
+      realMoneyCritical: 'Tus tarjetas superan tu efectivo por {amount}. Si pagas el saldo completo, no te alcanza.',
+      realMoneySavingsCover: 'Tu ahorro alcanza para cubrirlo.',
+      realMoneySavingsShort: 'Ni con tu ahorro alcanza.',
+      seeCards: 'Ver tarjetas',
+      cardsWithoutCycle: '{n} tarjeta(s) sin día de corte: se resta todo su saldo.',
     },
     // Transacciones
     // Salud financiera (labels del score)
@@ -1331,6 +1340,15 @@ const translations = {
       months: 'months',
       expensesAnalysis: 'Expense analysis',
       registerIncome: 'Record income to evaluate your financial health.',
+      realMoney: 'Real money',
+      realMoneyInfo: "Your cash minus everything you owe on your cards (billed and current cycle). It's what you'd have left if you paid your cards in full today.",
+      cash: 'Cash',
+      cardBalance: 'Card balance',
+      realMoneyCritical: "Your cards exceed your cash by {amount}. If you pay the full balance, you won't have enough.",
+      realMoneySavingsCover: 'Your savings can cover it.',
+      realMoneySavingsShort: 'Not even your savings cover it.',
+      seeCards: 'See cards',
+      cardsWithoutCycle: '{n} card(s) without a statement day: their full balance is subtracted.',
     },
     // Financial health (score labels)
     health: {
