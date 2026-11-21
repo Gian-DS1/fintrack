@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getNetWorthSplit, getLiquidCash, getLiquidDelta, getFirstDataMonth, getCumulativeLiquidWealth, getWealthTimeline, pickHeadPoint, getCashShortfall, canAffordPayment, getCardReminders, getHeroMetric, getWealthYDomain } from './selectors';
+import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getNetWorthSplit, getLiquidCash, getLiquidDelta, getFirstDataMonth, getCumulativeLiquidWealth, getWealthTimeline, pickHeadPoint, getCashShortfall, canAffordPayment, getCardReminders, getHeroMetric, getWealthYDomain, getRealMoney } from './selectors';
+import { getCardBalances } from '../../../utils/creditCards';
 
 const cats = [
   { id: 'c1', name: 'Supermercado', color: '#aaa' },
@@ -607,3 +608,119 @@ describe('canAffordPayment', () => {
   });
 });
 
+describe('getRealMoney', () => {
+  // Corte 20 / pago 5: a 28-may el ciclo abierto va del 21-may al 20-jun.
+  const ref = new Date(2026, 4, 28);
+  const card = (id, extra = {}) => ({ id, name: `Tarjeta ${id}`, cutoffDay: 20, dueDay: 5, payments: [], ...extra });
+  const cardTx = (cardId, amount, date, cashbackEarned = 0) =>
+    ({ categoryId: 'c1', amount, type: 'variable_expense', cashbackEarned, cardId, date });
+
+  it('sano: efectivo 100,000 y tarjeta 40,000 → dinero real 60,000', () => {
+    const r = getRealMoney([cardTx('a', 40000, '2026-05-10')], 100000, [card('a')], ref);
+    expect(r.cash).toBe(100000);
+    expect(r.cardsOwed).toBe(40000);
+    expect(r.realMoney).toBe(60000);
+    expect(r.isCritical).toBe(false);
+    expect(r.shortfall).toBe(0);
+  });
+
+  it('el consumo del ciclo abierto resta, aunque no esté facturado', () => {
+    const txs = [cardTx('a', 30000, '2026-05-25')];
+    expect(getCardBalances(card('a'), txs, ref).pendingBilled).toBe(0); // lo que resta hoy el hero
+    expect(getRealMoney(txs, 100000, [card('a')], ref).realMoney).toBe(70000);
+  });
+
+  it('pago parcial: baja el saldo de la tarjeta y el efectivo', () => {
+    const cards = [card('a', { payments: [{ id: 'p1', amount: 10000, date: '2026-05-20' }] })];
+    const r = getRealMoney([cardTx('a', 30000, '2026-05-10')], 100000, cards, ref);
+    expect(r.cash).toBe(90000);
+    expect(r.cardsOwed).toBe(20000);
+    expect(r.realMoney).toBe(70000);
+  });
+
+  it('sobrepago: el saldo de la tarjeta es 0 (el saldo a favor no suma)', () => {
+    const cards = [card('a', { payments: [{ id: 'p1', amount: 8000, date: '2026-05-20' }] })];
+    const r = getRealMoney([cardTx('a', 5000, '2026-05-10')], 100000, cards, ref);
+    expect(r.cardsOwed).toBe(0);
+    expect(r.cards[0].owed).toBe(0);
+    expect(r.realMoney).toBe(92000); // solo el efectivo que salió; nada vuelve
+  });
+
+  it('varias tarjetas: suma cada saldo y devuelve una entrada por tarjeta con su nombre', () => {
+    const txs = [cardTx('a', 12000, '2026-05-10'), cardTx('b', 7000, '2026-05-26')];
+    const r = getRealMoney(txs, 50000, [card('a'), card('b')], ref);
+    expect(r.cardsOwed).toBe(19000);
+    expect(r.realMoney).toBe(31000);
+    expect(r.cards).toEqual([
+      { id: 'a', name: 'Tarjeta a', owed: 12000, hasValidCycle: true },
+      { id: 'b', name: 'Tarjeta b', owed: 7000, hasValidCycle: true },
+    ]);
+  });
+
+  it('el saldo inicial de la tarjeta cuenta como deuda', () => {
+    const r = getRealMoney([], 20000, [card('a', { openingBalance: 8000 })], ref);
+    expect(r.cards[0].owed).toBe(8000);
+    expect(r.realMoney).toBe(12000);
+  });
+
+  it('el cashback plano se descuenta del saldo', () => {
+    const r = getRealMoney([cardTx('a', 10000, '2026-05-10', 100)], 20000, [card('a')], ref);
+    expect(r.cardsOwed).toBe(9900);
+  });
+
+  it('ejemplo del problema: efectivo 40,000 y tarjeta 55,000 → −15,000, crítico', () => {
+    const r = getRealMoney([cardTx('a', 55000, '2026-05-10')], 40000, [card('a')], ref);
+    expect(r.realMoney).toBe(-15000);
+    expect(r.isCritical).toBe(true);
+    expect(r.shortfall).toBe(15000);
+  });
+
+  it('dinero real exactamente 0 no es crítico', () => {
+    const r = getRealMoney([cardTx('a', 5000, '2026-05-10')], 5000, [card('a')], ref);
+    expect(r.realMoney).toBe(0);
+    expect(r.isCritical).toBe(false);
+  });
+
+  it('coma flotante: −0.004 se redondea a centavos y no es crítico (faltante 0)', () => {
+    const r = getRealMoney([cardTx('a', 100.004, '2026-05-10')], 100, [card('a')], ref);
+    // Redondeado a centavos y sin −0: la celda no puede mostrar «-RD$ 0.00».
+    expect(r.realMoney).toBe(0);
+    expect(r.isCritical).toBe(false);
+    expect(r.shortfall).toBe(0);
+  });
+
+  it('−0.01 ya es crítico', () => {
+    const r = getRealMoney([cardTx('a', 100.01, '2026-05-10')], 100, [card('a')], ref);
+    expect(r.isCritical).toBe(true);
+    expect(r.shortfall).toBeCloseTo(0.01, 5);
+  });
+
+  it('tarjeta sin ciclo válido: resta todo su consumo y se cuenta en cardsWithoutCycle', () => {
+    const cards = [card('a', { cutoffDay: NaN }), card('b')];
+    const txs = [cardTx('a', 5000, '2026-05-10'), cardTx('b', 2000, '2026-05-10')];
+    const r = getRealMoney(txs, 20000, cards, ref);
+    expect(r.cardsWithoutCycle).toBe(1);
+    expect(r.cardsOwed).toBe(7000);
+    expect(r.realMoney).toBe(13000);
+    expect(r.cards.map((c) => c.hasValidCycle)).toEqual([false, true]);
+  });
+
+  it('sin datos → todo en 0 y sin estado crítico', () => {
+    expect(getRealMoney([], 0, [], ref)).toEqual({
+      cash: 0, cardsOwed: 0, realMoney: 0, isCritical: false, shortfall: 0, cards: [], cardsWithoutCycle: 0,
+    });
+  });
+
+  it('sin tarjetas → dinero real = efectivo', () => {
+    const txs = [tx('c1', 2000, 'income'), tx('c2', 500, 'variable_expense')];
+    const r = getRealMoney(txs, 1000, [], ref);
+    expect(r.realMoney).toBe(r.cash);
+    expect(r.realMoney).toBe(2500);
+  });
+
+  it('saldo inicial ausente y cards ausentes se tratan como 0 / vacío', () => {
+    const r = getRealMoney(undefined, undefined, undefined, ref);
+    expect(r.realMoney).toBe(0);
+    expect(r.cards).toEqual([]);
+  });
+});

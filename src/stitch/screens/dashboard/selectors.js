@@ -1,7 +1,7 @@
 // Selectores puros del Dashboard. Helpers NUEVOS no cubiertos por utils:
 // desglose top5+Otros, uso de presupuesto, split de patrimonio.
 import { groupByCategory, getEffectiveAmount } from '../../../utils/calculations';
-import { getCardBalances } from '../../../utils/creditCards';
+import { getCardBalances, getCardOutstanding } from '../../../utils/creditCards';
 import { tr, monthShort } from '../../../i18n/runtime';
 
 const OTROS_COLOR = '#6b7280';
@@ -451,4 +451,31 @@ export function getCashShortfall(transactions, initialCashBalance, cards, paymen
 // ¿Se puede pagar? (efectivo + ahorros ≥ pago). totalSavings = Σ goal.currentAmount.
 export function canAffordPayment(available, totalSavings, paymentAmount) {
   return (Number(available) || 0) + (Number(totalSavings) || 0) >= (Number(paymentAmount) || 0);
+}
+
+// Dinero real de HOY = efectivo líquido − saldo pendiente de todas las tarjetas
+// (facturado + ciclo abierto − abonos). Es lo que quedaría si hoy se pagaran las
+// tarjetas completas. No suma ahorro ni resta préstamos. `getLiquidCash` no se
+// toca: el efectivo sigue modelando el banco.
+// Devuelve { cash, cardsOwed, realMoney, isCritical, shortfall, cards, cardsWithoutCycle }.
+export function getRealMoney(transactions, initialCashBalance, cards, refDate = new Date()) {
+  const cash = getLiquidCash(transactions, initialCashBalance, cards);
+  const perCard = (cards || []).map((card) => {
+    const { owed, hasValidCycle } = getCardOutstanding(card, transactions || [], refDate);
+    return { id: card.id, name: card.name, owed, hasValidCycle };
+  });
+  const cardsOwed = perCard.reduce((sum, c) => sum + c.owed, 0);
+  // A centavos y sin −0 (`|| 0`): un −0.004 de coma flotante no es un faltante
+  // real ni debe mostrarse como «-RD$ 0.00».
+  const realMoney = Math.round((cash - cardsOwed) * 100) / 100 || 0;
+  const isCritical = realMoney < 0;
+  return {
+    cash,
+    cardsOwed,
+    realMoney,
+    isCritical,
+    shortfall: isCritical ? -realMoney : 0,
+    cards: perCard,
+    cardsWithoutCycle: perCard.filter((c) => !c.hasValidCycle).length,
+  };
 }

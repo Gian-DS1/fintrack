@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getCardCycles, getStatementAmount, isStatementPaid, computeCashback, getStatementHistory, getLifetimeCashback, paidCyclesToPayments, getCardBalances, tierPercentage, getDerivedCashback, getTransactionCashback, hasTieredRule, normalizeCashbackRules } from './creditCards';
+import { getCardCycles, getStatementAmount, isStatementPaid, computeCashback, getStatementHistory, getLifetimeCashback, paidCyclesToPayments, getCardBalances, tierPercentage, getDerivedCashback, getTransactionCashback, hasTieredRule, normalizeCashbackRules, getCardOutstanding, hasValidCardCycle } from './creditCards';
 
 describe('getCardCycles', () => {
   it('corte 20 / pago 5: el pago cae el mes siguiente al corte', () => {
@@ -534,5 +534,104 @@ describe('computeCashback ignora reglas escalonadas', () => {
     // Sin el fix, encontraría la regla 'ccn' (tiers, sin percentage) y devolvería 0/NaN.
     // Con el fix, salta la regla escalonada y usa 'all' (1%): 1000 * 1% = 10.
     expect(computeCashback(card, 'ccn', 1000)).toBe(10);
+  });
+});
+
+describe('getCardOutstanding', () => {
+  const ref = new Date(2026, 4, 28); // corte 20 / pago 5 → ciclo abierto: 21-may a 20-jun
+  const card = { id: 'c1', cutoffDay: 20, dueDay: 5, payments: [] };
+
+  it('con ciclo válido coincide con getCardBalances().totalBalance (facturado + ciclo abierto)', () => {
+    const txs = [
+      { cardId: 'c1', date: '2026-05-10', amount: 3000, cashbackEarned: 30 }, // facturado
+      { cardId: 'c1', date: '2026-05-25', amount: 1200, cashbackEarned: 0 },  // ciclo abierto
+    ];
+    const withPayment = { ...card, openingBalance: 500, payments: [{ id: 'p1', amount: 1000 }] };
+    for (const c of [card, withPayment]) {
+      expect(getCardOutstanding(c, txs, ref).owed).toBe(getCardBalances(c, txs, ref).totalBalance);
+    }
+    expect(getCardOutstanding(card, txs, ref)).toEqual({ owed: 4170, hasValidCycle: true });
+  });
+
+  it('el ciclo abierto suma al saldo aunque el facturado pendiente sea 0', () => {
+    const txs = [{ cardId: 'c1', date: '2026-05-25', amount: 2000, cashbackEarned: 0 }];
+    expect(getCardBalances(card, txs, ref).pendingBilled).toBe(0);
+    expect(getCardOutstanding(card, txs, ref).owed).toBe(2000);
+  });
+
+  it('un sobrepago deja el saldo en 0, nunca negativo', () => {
+    const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
+    const overpaid = { ...card, payments: [{ id: 'p1', amount: 8000 }] };
+    expect(getCardOutstanding(overpaid, txs, ref).owed).toBe(0);
+  });
+});
+
+describe('hasValidCardCycle', () => {
+  it('días de corte y pago enteros entre 1 y 31 → válido', () => {
+    expect(hasValidCardCycle({ cutoffDay: 20, dueDay: 5 })).toBe(true);
+    expect(hasValidCardCycle({ cutoffDay: 1, dueDay: 31 })).toBe(true);
+    expect(hasValidCardCycle({ cutoffDay: '20', dueDay: '5' })).toBe(true); // misma conversión que getCardCycles
+  });
+
+  it('corte o pago ausente, 0, NaN, fuera de rango o con decimales → inválido', () => {
+    expect(hasValidCardCycle({ cutoffDay: NaN, dueDay: 5 })).toBe(false);
+    expect(hasValidCardCycle({ cutoffDay: 0, dueDay: 5 })).toBe(false);
+    expect(hasValidCardCycle({ cutoffDay: 20 })).toBe(false);
+    expect(hasValidCardCycle({ cutoffDay: 20, dueDay: null })).toBe(false);
+    expect(hasValidCardCycle({ cutoffDay: 32, dueDay: 5 })).toBe(false);
+    expect(hasValidCardCycle({ cutoffDay: 20, dueDay: 4.5 })).toBe(false);
+    expect(hasValidCardCycle({})).toBe(false);
+    expect(hasValidCardCycle(null)).toBe(false);
+  });
+});
+
+describe('getCardOutstanding · tarjeta sin ciclo válido', () => {
+  const ref = new Date(2026, 4, 28);
+  const noCycle = (extra = {}) => ({ id: 'c1', cutoffDay: NaN, dueDay: 5, payments: [], ...extra });
+  const spend = (amount, date, cashbackEarned = 0) => ({ cardId: 'c1', date, amount, cashbackEarned });
+
+  it('regresión: con corte NaN getCardBalances ignora el consumo, pero el saldo pendiente no', () => {
+    const txs = [spend(5000, '2026-05-10')];
+    expect(getCardBalances(noCycle(), txs, ref).totalBalance).toBe(0); // el problema que corrige
+    expect(getCardOutstanding(noCycle(), txs, ref)).toEqual({ owed: 5000, hasValidCycle: false });
+  });
+
+  it('con corte 0 el ciclo es inválido aunque Date lo "arregle" al último día del mes anterior', () => {
+    const card = noCycle({ cutoffDay: 0 });
+    expect(getCardOutstanding(card, [spend(5000, '2026-05-10')], ref)).toEqual({ owed: 5000, hasValidCycle: false });
+    // Un consumo futuro solo lo contaría la lectura por ciclo: aquí no entra.
+    expect(getCardOutstanding(card, [spend(5000, '2026-06-02')], ref).owed).toBe(0);
+  });
+
+  it('también sin día de pago: se resta todo el consumo hasta hoy', () => {
+    const card = { id: 'c1', cutoffDay: 20, payments: [] };
+    expect(getCardOutstanding(card, [spend(3000, '2026-05-10')], ref)).toEqual({ owed: 3000, hasValidCycle: false });
+  });
+
+  it('suma saldo inicial y consumo neto de cashback; resta abonos', () => {
+    const card = noCycle({ openingBalance: 2000, payments: [{ id: 'p1', amount: 1500 }] });
+    const txs = [spend(10000, '2026-05-10', 100), spend(500, '2026-05-28')];
+    // 2000 + (10000 − 100) + 500 − 1500
+    expect(getCardOutstanding(card, txs, ref).owed).toBe(10900);
+  });
+
+  it('los consumos con fecha posterior a hoy no cuentan', () => {
+    const txs = [spend(4000, '2026-05-28'), spend(9999, '2026-05-29')];
+    expect(getCardOutstanding(noCycle(), txs, ref).owed).toBe(4000);
+  });
+
+  it('descuenta los estados de cuenta legados pagados (paidCycles con monto)', () => {
+    const card = noCycle({ paidCycles: [{ cycleEnd: '2026-04-20', amount: 1200, cashback: 0 }] });
+    expect(getCardOutstanding(card, [spend(5000, '2026-05-10')], ref).owed).toBe(3800);
+  });
+
+  it('un sobrepago deja el saldo en 0', () => {
+    const card = noCycle({ payments: [{ id: 'p1', amount: 9000 }] });
+    expect(getCardOutstanding(card, [spend(5000, '2026-05-10')], ref).owed).toBe(0);
+  });
+
+  it('ignora las transacciones de otras tarjetas', () => {
+    const txs = [spend(5000, '2026-05-10'), { cardId: 'otra', date: '2026-05-10', amount: 777, cashbackEarned: 0 }];
+    expect(getCardOutstanding(noCycle(), txs, ref).owed).toBe(5000);
   });
 });

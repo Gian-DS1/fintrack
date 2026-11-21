@@ -250,6 +250,45 @@ export function getCardBalances(card, transactions = [], refDate = new Date()) {
 }
 
 /**
+ * ¿La tarjeta tiene día de corte y de pago válidos (enteros entre 1 y 31)?
+ * Sin ellos getCardCycles genera fechas vacías y getCardBalances ignora el consumo.
+ */
+export function hasValidCardCycle(card) {
+  const isDay = (v) => {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 1 && n <= 31;
+  };
+  return isDay(card?.cutoffDay) && isDay(card?.dueDay);
+}
+
+/**
+ * Saldo pendiente TOTAL de una tarjeta hoy: lo que habría que pagar para dejarla
+ * en 0, neto de cashback plano y con mínimo 0.
+ *  - Con ciclo válido delega en getCardBalances (fuente única de verdad):
+ *    facturado + ciclo abierto − abonos.
+ *  - Sin ciclo válido no hay forma de separar facturado de ciclo abierto, así que
+ *    se suma TODO el consumo con fecha ≤ refDate (más el saldo inicial) y se restan
+ *    los abonos y los estados de cuenta legados pagados. Es la lectura prudente:
+ *    la tarjeta no "desaparece" del dinero real por falta de configuración.
+ * @returns {{ owed: number, hasValidCycle: boolean }}
+ */
+export function getCardOutstanding(card, transactions = [], refDate = new Date()) {
+  if (hasValidCardCycle(card)) {
+    return { owed: getCardBalances(card, transactions, refDate).totalBalance, hasValidCycle: true };
+  }
+  const todayISO = toISODate(refDate);
+  const opening = Number(card?.openingBalance) || 0;
+  const spent =
+    getStatementAmount(transactions, card.id, EPOCH_ISO, todayISO) -
+    getStatementCashback(transactions, card.id, EPOCH_ISO, todayISO);
+  const abonos = Array.isArray(card.payments) ? card.payments : [];
+  const paid =
+    abonos.reduce((sum, p) => sum + (Number(p.amount) || 0), 0) +
+    paidCyclesToPayments(card, transactions).reduce((sum, p) => sum + p.amount, 0);
+  return { owed: Math.max(0, opening + spent - paid), hasValidCycle: false };
+}
+
+/**
  * Cashback (en DOP) que genera un monto en una tarjeta, según sus reglas.
  * Busca primero la regla de la categoría exacta y, si no hay, la regla 'all'.
  * `amount` debe estar en la moneda base (DOP); redondea a 2 decimales.
