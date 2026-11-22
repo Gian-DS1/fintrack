@@ -59,13 +59,20 @@ export function getCardCycles(card, refDate = new Date()) {
   };
 }
 
+export const EXPENSE_TYPES = ['expense', 'fixed_expense', 'variable_expense'];
+export const isExpenseType = (type) => EXPENSE_TYPES.includes(type);
+
+// Solo un gasto es consumo de la tarjeta. Un ingreso o un ahorro con `cardId`
+// (huérfano de un formulario viejo) no suma al estado de cuenta ni a su cashback.
+const isCardCharge = (t, cardId) => t.cardId === cardId && isExpenseType(t.type);
+
 /**
- * Suma (en DOP) las transacciones de una tarjeta cuya fecha cae en [startISO, endISO].
+ * Suma (en DOP) los gastos de una tarjeta cuya fecha cae en [startISO, endISO].
  * Monto BRUTO (lo consumido); el cashback se calcula aparte con getStatementCashback.
  */
 export function getStatementAmount(transactions, cardId, startISO, endISO) {
   return transactions.reduce((sum, t) => {
-    if (t.cardId !== cardId) return sum;
+    if (!isCardCharge(t, cardId)) return sum;
     if (t.date >= startISO && t.date <= endISO) return sum + (Number(t.amount) || 0);
     return sum;
   }, 0);
@@ -78,7 +85,7 @@ export function getStatementAmount(transactions, cardId, startISO, endISO) {
  */
 function getStatementCashback(transactions, cardId, startISO, endISO) {
   return transactions.reduce((sum, t) => {
-    if (t.cardId !== cardId) return sum;
+    if (!isCardCharge(t, cardId)) return sum;
     if (t.date >= startISO && t.date <= endISO) return sum + (Number(t.cashbackEarned) || 0);
     return sum;
   }, 0);
@@ -182,13 +189,13 @@ export function getStatementHistory(card) {
 }
 
 /**
- * Cashback acumulado de por vida: suma del cashback de TODAS las transacciones de
- * la tarjeta. Se calcula de las transacciones (no de paidCycles), más robusto.
+ * Cashback acumulado de por vida: suma del cashback de TODOS los gastos de la
+ * tarjeta. Se calcula de las transacciones (no de paidCycles), más robusto.
  */
 export function getLifetimeCashback(card, transactions = []) {
   if (!card || !card.id) return 0;
   return transactions.reduce(
-    (sum, t) => (t.cardId === card.id ? sum + (Number(t.cashbackEarned) || 0) : sum),
+    (sum, t) => (isCardCharge(t, card.id) ? sum + (Number(t.cashbackEarned) || 0) : sum),
     0
   );
 }
@@ -357,7 +364,7 @@ export function getTransactionCashback(card, tx, transactions = []) {
   const { openStartISO, openEndISO } = getCardCycles(card, new Date(tx.date + 'T00:00:00'));
 
   const accumulated = transactions.reduce((sum, t) => {
-    if (t.cardId !== card.id) return sum;
+    if (!isCardCharge(t, card.id)) return sum;
     if (t.categoryId !== rule.categoryId) return sum;
     if (!t.date || t.date < openStartISO || t.date > openEndISO) return sum;
     return sum + (Number(t.amount) || 0);
@@ -417,7 +424,7 @@ export function getDerivedCashback(card, transactions = [], refDate = new Date()
   for (const rule of card.cashbackRules) {
     if (!Array.isArray(rule.tiers) || rule.tiers.length === 0) continue;
     const accumulated = transactions.reduce((sum, t) => {
-      if (t.cardId !== card.id) return sum;
+      if (!isCardCharge(t, card.id)) return sum;
       if (t.categoryId !== rule.categoryId) return sum;
       if (!t.date || t.date < openStartISO || t.date > openEndISO) return sum;
       return sum + (Number(t.amount) || 0);

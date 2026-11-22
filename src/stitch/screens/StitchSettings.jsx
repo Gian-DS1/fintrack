@@ -1,5 +1,6 @@
 // Ajustes — nivel de presupuesto, moneda, idioma, export/import, categorías. Estilo Stitch.
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import MS from '../MS';
 import { Stagger } from '../StitchMotion';
@@ -20,6 +21,16 @@ import { supabase } from '../../lib/supabase';
 
 export default function StitchSettings() {
   const { t, language } = useI18n();
+
+  // Ancla `#efectivo-inicial` (la usa la nota de pagos legados del Resumen): el
+  // BrowserRouter no hace scroll solo, así que se enfoca el campo al llegar.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash !== '#efectivo-inicial') return;
+    const input = document.getElementById('initial-cash');
+    input?.scrollIntoView({ block: 'center' });
+    input?.focus({ preventScroll: true });
+  }, [hash]);
 
   // Niveles de presupuesto (de más simple a más avanzado).
   // Presets de antelación del recordatorio. Tres opciones cubren el caso real;
@@ -274,9 +285,11 @@ export default function StitchSettings() {
         {/* Efectivo inicial: base del efectivo líquido del Dashboard. En demo se
             guarda en memoria; con sesión se persiste en profiles. */}
         <Stagger.Item className="lg:col-span-6 bg-surface-panel border border-border-subtle rounded-lg inner-glow p-lg flex flex-col gap-sm">
-          <h2 className="font-mono-data text-mono-data text-on-surface-variant border-b border-border-subtle pb-sm">{t('screens.settings.initialCashLabel').toUpperCase()}</h2>
+          <h2 id="initial-cash-label" className="font-mono-data text-mono-data text-on-surface-variant border-b border-border-subtle pb-sm">{t('screens.settings.initialCashLabel').toUpperCase()}</h2>
           <div className="max-w-[280px]">
             <StitchCurrencyInput
+              id="initial-cash"
+              aria-labelledby="initial-cash-label"
               value={initialCashBalance === 0 ? '' : String(initialCashBalance)}
               onChange={(v) => { if (demo) demoSetInitialCashBalance(v); else setInitialCashBalance(v); }}
             />

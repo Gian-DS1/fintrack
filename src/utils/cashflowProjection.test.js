@@ -80,6 +80,21 @@ describe('getNextCardPayment', () => {
     expect(getNextCardPayment(c, txs, [], REF)).toEqual({ dateISO: '2026-07-05', amount: 3000, overdue: false });
   });
 
+  it('un ingreso o un ahorro con cardId huérfano no engorda el pago', () => {
+    const txs = [
+      cardTx('a', 55000, '2026-05-10'),
+      { ...cardTx('a', 9000, '2026-05-10'), type: 'income' },
+      { ...cardTx('a', 4000, '2026-05-10'), type: 'savings' },
+    ];
+    expect(getNextCardPayment(card('a'), txs, [], REF))
+      .toEqual({ dateISO: '2026-06-05', amount: 55000, overdue: false });
+  });
+
+  it('un ingreso con cardId huérfano no crea un pago de tarjeta', () => {
+    const txs = [{ ...cardTx('a', 9000, '2026-05-10'), type: 'income' }];
+    expect(getNextCardPayment(card('a'), txs, [], REF)).toBeNull();
+  });
+
   it('tarjeta sin nada que pagar → null', () => {
     expect(getNextCardPayment(card('a'), [], [], REF)).toBeNull();
   });

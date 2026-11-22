@@ -110,4 +110,28 @@ test.describe('Flujo principal: acceso → dashboard', () => {
     // La URL refleja la ruta y la app sigue montada (no se rompió el routing).
     await expect(page).toHaveURL(/\/transacciones$/);
   });
+
+  test('el hero se rotula «Mi dinero total»; «Patrimonio neto» queda para Mis finanzas', async ({ page }) => {
+    await openLanding(page);
+    await enterDemo(page);
+    await skipTour(page);
+
+    const grid = page.locator('[data-tour="dashboard-grid"]');
+    await expect(grid.getByText('Mi dinero total').first()).toBeVisible();
+    await expect(grid.getByText('Patrimonio neto', { exact: true })).toHaveCount(0);
+  });
+
+  test('el ancla #efectivo-inicial de Ajustes enfoca el campo del efectivo inicial', async ({ page }) => {
+    await openLanding(page);
+    await enterDemo(page);
+    await skipTour(page);
+
+    // Navegación del lado del cliente, como la del enlace de la nota de pagos legados.
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/ajustes#efectivo-inicial');
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    });
+
+    await expect(page.locator('#initial-cash')).toBeFocused();
+  });
 });

@@ -18,7 +18,7 @@ import { getBudgetSummary } from '../../utils/calculations';
 import { getNextLoanDueDate } from '../../utils/loanReminders';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { monthShort } from '../../i18n/runtime';
-import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getWealthTimeline, getCardReminders, getRealMoney } from './dashboard/selectors';
+import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getWealthTimeline, getCardReminders, getRealMoney, hasLegacyPaidCycles } from './dashboard/selectors';
 import { BentoCell } from './dashboard/dashboardUi';
 import RealMoneyCard from './dashboard/RealMoneyCard';
 import WealthTrendChart from './dashboard/WealthTrendChart';
@@ -27,6 +27,8 @@ import BudgetBar from './dashboard/BudgetBar';
 import SignalsRail from './dashboard/SignalsRail';
 import usePrefsStore from '../../stores/usePrefsStore';
 import { isDemoActive } from '../demoMode';
+import { useAuth } from '../../contexts/AuthContext';
+import { isLegacyNoteDismissed, dismissLegacyNote } from './dashboard/legacyNoteStorage';
 
 const fmt = (n) => formatCurrency(n);
 
@@ -113,6 +115,14 @@ export default function StitchDashboard() {
     () => getRealMoney(transactions, initialCashBalance, cards, now),
     [transactions, initialCashBalance, cards, now],
   );
+  // Nota de pagos legados: visible mientras haya `paidCycles` y no se haya cerrado
+  // con «Ya lo comprobé» (guardado por usuario en el dispositivo).
+  const { user } = useAuth();
+  const noteUserId = demo ? 'demo' : user?.id;
+  const [noteClosed, setNoteClosed] = useState(false);
+  const hasLegacy = useMemo(() => hasLegacyPaidCycles(cards), [cards]);
+  const legacyPaidCycles = hasLegacy && !noteClosed && !isLegacyNoteDismissed(noteUserId);
+  const onDismissLegacy = () => { dismissLegacyNote(noteUserId); setNoteClosed(true); };
   // Movimientos previstos del efectivo hasta el pago de las tarjetas (de HOY).
   const cashflow = useMemo(
     () => getCashflowUntilCardDue({
@@ -190,7 +200,7 @@ export default function StitchDashboard() {
       <Stagger data-tour="dashboard-grid" className="grid grid-cols-2 md:grid-cols-12 gap-sm auto-rows-min">
         {/* 0 · DINERO REAL a todo el ancho, antes del hero: siempre de hoy. */}
         <Stagger.Item className="col-span-2 md:col-span-12">
-          <RealMoneyCard data={realMoney} totalSavings={currentSavings} cashflow={cashflow} />
+          <RealMoneyCard data={realMoney} totalSavings={currentSavings} cashflow={cashflow} legacyPaidCycles={legacyPaidCycles} onDismissLegacy={onDismissLegacy} />
         </Stagger.Item>
 
         {/* 1 · HERO a TODO EL ANCHO (col-12): el gráfico del patrimonio es el

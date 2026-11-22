@@ -163,6 +163,27 @@ due-today one.
 - **Writes:** none attempted against the missing table.
 - **Settings:** unaffected — no new columns, no new UI.
 
+## Orphan `card_id` on income and savings rows (2026-11-22)
+
+**`cleanup_orphan_card_ids.sql`** — a one-off cleanup, **run by hand in the
+Supabase SQL Editor** (it is not run automatically). It sets `card_id = null` on
+`transactions` and `recurring_transactions` rows whose `type` is not an expense
+(`expense`, `fixed_expense`, `variable_expense`). Idempotent: re-running it changes
+nothing once the rows are clean. It touches no amounts, dates or categories, and
+adds no schema. Step 1 of the script is a read-only count of the affected rows.
+
+The transaction form used to keep the selected card when the type changed from
+expense to income or savings. Only an expense can belong to a card: such a row
+inflated the card's statement and made a savings entry lower the real money twice.
+
+### What happens if you deploy the code BEFORE running this script?
+- **Reads and calculations:** safe. Statement amounts, cashback and real money
+  already ignore any row that is not an expense, so old orphan rows do not affect
+  any figure.
+- **Writes:** the form and the store no longer create or keep a `card_id` on
+  non-expense rows. Editing an old orphan row clears it.
+- The script only tidies the stored data; running it is optional but recommended.
+
 ## Previous migrations (already applied in historical production)
 
 `schema.sql` is the canonical source of truth (idempotent; it already includes the

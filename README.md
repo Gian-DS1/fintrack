@@ -20,7 +20,7 @@ debts, savings goals and reminders — multi-currency, bilingual, installable as
 
 ---
 
-<img src="docs/screenshots/dashboard.png" alt="FinTrack dashboard: liquid-wealth chart, spending donut and reminders" width="100%" />
+<img src="docs/screenshots/dashboard.png" alt="FinTrack dashboard: real-money cell, liquid-wealth chart, spending donut and reminders" width="100%" />
 
 ---
 
@@ -49,8 +49,9 @@ debts, savings goals and reminders — multi-currency, bilingual, installable as
 | **Credit cards** | Automatic statement/payment cycles, rule-based cashback, partial payments, statement history, and a card catalog with predefined cashback. |
 | **Debts** | Balances, interest, payment history linked to real transactions, avalanche strategy, and an estimated months-to-payoff. |
 | **Savings & goals** | Goals with logged contributions (each one creates its own linked transaction), projected completion date, optional horizon (short/medium/long) and history with undo. |
-| **Dashboard** | Bento grid built around a liquid-wealth time series you can scrub and pin, with spending donut, budget pace bar and reminders. Month selector to review the past. |
+| **Dashboard** | Bento grid with a **Real money** cell on top (cash minus everything you owe on your cards, with an "Is it enough until…?" list of scheduled movements up to the next card payment), a liquid-wealth time series you can scrub and pin, spending donut, budget pace bar and reminders. Month selector to review the past. |
 | **My Finances** | One reconciliation view over **cards**, **savings** and **debts** with a net-worth summary on top. |
+| **Projection** | A 12-month projection of your real money from what is scheduled and what you usually spend, with three scenarios (as you go, essentials only, with cuts), simulated cancellations of recurring items and a manual correction of the variable spend. It is a simulation: nothing you change there touches your data. |
 | **Calendar** | Monthly view with past movements and upcoming due dates: debt installments, card payments, goals and recurring items. |
 | **Settings** | Budget level, currency, language (es/en), CSV/Excel import & export, PDF statement import, and category management. |
 
@@ -71,6 +72,10 @@ to regenerate them from the current commit.
 | My Finances · cards, savings, debts | Calendar · upcoming due dates |
 |---|---|
 | <img src="docs/screenshots/finances.png" alt="My Finances screen with net-worth summary" /> | <img src="docs/screenshots/calendar.png" alt="Calendar with movements and upcoming due dates" /> |
+
+| Projection · 12-month real money |
+|---|
+| <img src="docs/screenshots/projection.png" alt="Projection screen with the 12-month real-money curve, scenarios and simulated cancellations" width="50%" /> |
 
 <details>
 <summary><b>Landing page and mobile view</b></summary>

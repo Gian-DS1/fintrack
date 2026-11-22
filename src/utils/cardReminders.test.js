@@ -7,7 +7,7 @@ import {
 // Tarjeta base: corte 20, pago 5 del mes siguiente. Con un consumo del 10 de
 // mayo (dentro del ciclo cerrado 21-abr → 20-may) vence el 2026-06-05.
 const card = { id: 'c1', name: 'Visa Popular', bank: 'Banco Popular', cutoffDay: 20, dueDay: 5, payments: [] };
-const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
+const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
 
 // Días antes del 2026-06-05.
 const dayBefore = (n) => new Date(2026, 5, 5 - n);
@@ -96,7 +96,7 @@ describe('getDueReminders', () => {
   it('usa pendingBilled y no totalBalance: ignora el consumo del ciclo abierto', () => {
     // 5000 facturados (10-may, ciclo cerrado) + 3000 del ciclo abierto (25-may),
     // que aún no vence. El aviso debe cobrar solo los 5000.
-    const conAbierto = [...txs, { cardId: 'c1', date: '2026-05-25', amount: 3000, cashbackEarned: 0 }];
+    const conAbierto = [...txs, { cardId: 'c1', type: 'variable_expense', date: '2026-05-25', amount: 3000, cashbackEarned: 0 }];
     const r = getDueReminders([card], conAbierto, dayBefore(5), [5, 1]);
     expect(r[0].amount).toBe(5000);
   });
@@ -117,7 +117,7 @@ describe('getDueReminders', () => {
     // Segunda tarjeta: corte 20 / pago 1 → vence el 2026-06-01, es decir 4 días
     // antes que la primera. El 2026-05-31 le falta 1 día y a la otra 5.
     const card2 = { id: 'c2', name: 'Mastercard BHD', bank: 'BHD', cutoffDay: 20, dueDay: 1, payments: [] };
-    const txs2 = [...txs, { cardId: 'c2', date: '2026-05-10', amount: 800, cashbackEarned: 0 }];
+    const txs2 = [...txs, { cardId: 'c2', type: 'variable_expense', date: '2026-05-10', amount: 800, cashbackEarned: 0 }];
     const r = getDueReminders([card, card2], txs2, new Date(2026, 4, 31), [5, 1]);
     expect(r.map((x) => x.cardId)).toEqual(['c2', 'c1']);
     expect(r[0].days).toBe(1);

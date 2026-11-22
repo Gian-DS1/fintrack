@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getNetWorthSplit, getLiquidCash, getLiquidDelta, getFirstDataMonth, getCumulativeLiquidWealth, getWealthTimeline, pickHeadPoint, getCashShortfall, canAffordPayment, getCardReminders, getHeroMetric, getWealthYDomain, getRealMoney, computeShortfall } from './selectors';
+import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getNetWorthSplit, getLiquidCash, getLiquidDelta, getFirstDataMonth, getCumulativeLiquidWealth, getWealthTimeline, pickHeadPoint, getCashShortfall, canAffordPayment, getCardReminders, getHeroMetric, getWealthYDomain, getRealMoney, computeShortfall, hasLegacyPaidCycles, getNetWorth } from './selectors';
 import { getCardBalances } from '../../../utils/creditCards';
 
 const cats = [
@@ -393,7 +393,7 @@ describe('getCardReminders', () => {
 
 describe('getHeroMetric', () => {
   it('el hero es siempre el patrimonio neto (wealth): la línea única lo muestra', () => {
-    expect(getHeroMetric()).toEqual({ key: 'wealth', labelKey: 'dashboard.netWorth', infoKey: 'dashboard.myMoneyTotalInfo' });
+    expect(getHeroMetric()).toEqual({ key: 'wealth', labelKey: 'dashboard.myMoneyTotal', infoKey: 'dashboard.myMoneyTotalInfo' });
   });
 
   it('ignora argumentos heredados del toggle barras/línea (contrato estable)', () => {
@@ -730,6 +730,20 @@ describe('getRealMoney', () => {
     expect(r.cards.map((c) => c.hasValidCycle)).toEqual([false, true]);
   });
 
+  it('ingreso con cardId huérfano: sube el dinero real por su monto completo', () => {
+    const txs = [{ ...cardTx('a', 5000, '2026-05-10'), type: 'income' }];
+    const r = getRealMoney(txs, 20000, [card('a')], ref);
+    expect(r.cardsOwed).toBe(0);
+    expect(r.realMoney).toBe(25000);
+  });
+
+  it('ahorro con cardId huérfano: baja el dinero real solo por su monto', () => {
+    const txs = [{ ...cardTx('a', 3000, '2026-05-10'), type: 'savings' }];
+    const r = getRealMoney(txs, 20000, [card('a')], ref);
+    expect(r.cardsOwed).toBe(0);
+    expect(r.realMoney).toBe(17000);
+  });
+
   it('sin datos → todo en 0 y sin estado crítico', () => {
     expect(getRealMoney([], 0, [], ref)).toEqual({
       cash: 0, cardsOwed: 0, realMoney: 0, isCritical: false, shortfall: 0, cards: [], cardsWithoutCycle: 0,
@@ -747,5 +761,103 @@ describe('getRealMoney', () => {
     const r = getRealMoney(undefined, undefined, undefined, ref);
     expect(r.realMoney).toBe(0);
     expect(r.cards).toEqual([]);
+  });
+});
+
+describe('hasLegacyPaidCycles', () => {
+  it('hay alguna tarjeta con paidCycles no vacío (formato string u objeto)', () => {
+    expect(hasLegacyPaidCycles([{ id: 'a', paidCycles: [] }, { id: 'b', paidCycles: ['2026-05-20'] }])).toBe(true);
+    expect(hasLegacyPaidCycles([{ id: 'a', paidCycles: [{ cycleEnd: '2026-05-20', amount: 1000 }] }])).toBe(true);
+  });
+
+  it('sin paidCycles, vacíos o ausentes → false', () => {
+    expect(hasLegacyPaidCycles([{ id: 'a', paidCycles: [] }, { id: 'b' }])).toBe(false);
+    expect(hasLegacyPaidCycles([{ id: 'a', paidCycles: null }])).toBe(false);
+  });
+
+  it('sin tarjetas o con tarjetas ausentes → false', () => {
+    expect(hasLegacyPaidCycles([])).toBe(false);
+    expect(hasLegacyPaidCycles(undefined)).toBe(false);
+  });
+});
+
+// P7: «Mi dinero total» y el patrimonio restan el saldo pendiente COMPLETO de las
+// tarjetas (facturado + ciclo abierto − abonos), la misma regla del dinero real.
+describe('Mi dinero total y patrimonio: restan el saldo completo de tarjetas (P7)', () => {
+  // Corte 25 / pago 5. A 15-mar el ciclo abierto va del 26-feb al 25-mar.
+  const ref = new Date(2026, 2, 15);
+  const card = (id, extra = {}) => ({ id, name: `Tarjeta ${id}`, cutoffDay: 25, dueDay: 5, payments: [], ...extra });
+  const tx = (amount, type, date, extra = {}) => ({ categoryId: 'c1', amount, type, cashbackEarned: 0, date, ...extra });
+  const txs = [
+    tx(20000, 'income', '2026-02-01'),
+    tx(3000, 'variable_expense', '2026-02-10', { cardId: 'a' }), // facturado
+    tx(2000, 'variable_expense', '2026-03-05', { cardId: 'a' }), // ciclo abierto
+  ];
+  const savings = 4000;
+
+  it('el punto de hoy de la serie diaria = dinero real + ahorro', () => {
+    const cards = [card('a')];
+    const last = getWealthTimeline(txs, 1000, 3, ref, cards, savings).at(-1);
+    const real = getRealMoney(txs, 1000, cards, ref).realMoney;
+    expect(last.cardsDue).toBe(5000); // facturado 3,000 + ciclo abierto 2,000
+    expect(last.wealth).toBe(real + savings);
+  });
+
+  it('el último punto de la serie mensual también = dinero real + ahorro', () => {
+    const cards = [card('a')];
+    const last = getCumulativeLiquidWealth(txs, 1000, 3, ref, cards, savings).at(-1);
+    expect(last.wealth).toBe(getRealMoney(txs, 1000, cards, ref).realMoney + savings);
+  });
+
+  it('con un abono a la tarjeta, el punto de hoy sigue atado al dinero real', () => {
+    const cards = [card('a', { payments: [{ id: 'p', amount: 1500, date: '2026-03-10' }] })];
+    const last = getWealthTimeline(txs, 1000, 3, ref, cards, savings).at(-1);
+    expect(last.wealth).toBe(getRealMoney(txs, 1000, cards, ref).realMoney + savings);
+  });
+
+  it('cada punto pasado usa los consumos y abonos de ESE día, no los posteriores', () => {
+    const cards = [card('a', { payments: [{ id: 'p', amount: 1500, date: '2026-03-10' }] })];
+    const by = Object.fromEntries(getWealthTimeline(txs, 1000, 3, ref, cards, savings).map((p) => [p.key, p]));
+    expect(by['2026-02-09'].cardsDue).toBe(0);    // aún sin consumo
+    expect(by['2026-02-10'].cardsDue).toBe(3000); // el facturado
+    expect(by['2026-03-04'].cardsDue).toBe(3000);
+    expect(by['2026-03-05'].cardsDue).toBe(5000); // entra el ciclo abierto
+    expect(by['2026-03-09'].cardsDue).toBe(5000); // el abono del 10 aún no ocurre
+    expect(by['2026-03-10'].cardsDue).toBe(3500); // −1,500
+  });
+
+  it('un gasto con tarjeta de fecha futura (ciclo abierto) entra en el punto de hoy, igual que en el dinero real', () => {
+    const conFuturo = [...txs, tx(300, 'variable_expense', '2026-03-20', { cardId: 'a' })];
+    const cards = [card('a')];
+    const by = Object.fromEntries(getWealthTimeline(conFuturo, 1000, 3, ref, cards, savings).map((p) => [p.key, p]));
+    const last = by['2026-03-15'];
+    expect(last.cardsDue).toBe(5300);
+    expect(last.wealth).toBe(getRealMoney(conFuturo, 1000, cards, ref).realMoney + savings);
+    expect(by['2026-03-14'].cardsDue).toBe(5000); // los días pasados no lo anticipan
+  });
+
+  it('un ingreso con cardId huérfano no mueve las tarjetas de la serie', () => {
+    const huerfano = [...txs, tx(900, 'income', '2026-03-06', { cardId: 'a' })];
+    const last = getWealthTimeline(huerfano, 1000, 3, ref, [card('a')], savings).at(-1);
+    expect(last.cardsDue).toBe(5000);
+  });
+
+  it('getNetWorth = efectivo + ahorro − préstamos − saldo pendiente de tarjetas', () => {
+    const cards = [card('a')];
+    const r = getNetWorth(txs, 1000, cards, savings, 6000, ref);
+    const real = getRealMoney(txs, 1000, cards, ref);
+    expect(r.cash).toBe(real.cash);
+    expect(r.cardsOwed).toBe(5000);
+    expect(r.netWorth).toBe(real.realMoney + savings - 6000);
+  });
+
+  it('getNetWorth sin tarjetas ni préstamos = efectivo + ahorro', () => {
+    const r = getNetWorth([tx(500, 'income', '2026-03-01')], 100, [], 50, 0, ref);
+    expect(r.cardsOwed).toBe(0);
+    expect(r.netWorth).toBe(650);
+  });
+
+  it('getNetWorth tolera datos ausentes', () => {
+    expect(getNetWorth(undefined, undefined, undefined, undefined, undefined, ref).netWorth).toBe(0);
   });
 });

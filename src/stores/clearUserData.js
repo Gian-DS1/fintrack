@@ -20,6 +20,7 @@ import useCreditCardStore from './useCreditCardStore';
 import useRecurringStore from './useRecurringStore';
 import usePrefsStore from './usePrefsStore';
 import { clearSimulations } from '../stitch/screens/projection/simulationStorage';
+import { clearLegacyNotes } from '../stitch/screens/dashboard/legacyNoteStorage';
 
 const RESETS = [
   [useTransactionStore, { transactions: [] }],
@@ -40,4 +41,6 @@ export function clearUserData() {
   }
   // La simulación de «Proyección» vive en localStorage (por usuario): no sobrevive al fin de sesión.
   clearSimulations();
+  // Igual el «Ya lo comprobé» de la nota de pagos legados del Resumen.
+  clearLegacyNotes();
 }
