@@ -60,6 +60,43 @@ test.describe('Flujo principal: acceso → dashboard', () => {
     expect(sobrante).toBeLessThanOrEqual(0);
   });
 
+  test('«¿Me alcanza hasta el…?» está cerrado, se abre con teclado y avisa que solo cuenta lo programado', async ({ page }) => {
+    await openLanding(page);
+    await enterDemo(page);
+    await skipTour(page);
+
+    const primeraCelda = page.locator('[data-tour="dashboard-grid"] > *').first();
+    const toggle = primeraCelda.getByRole('button', { name: /¿Me alcanza hasta el/i });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(primeraCelda.getByText('Solo incluye movimientos programados.')).toHaveCount(0);
+
+    // Teclado: foco + Enter, sin ratón.
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(primeraCelda.getByText('Efectivo hoy', { exact: true })).toBeVisible();
+    await expect(primeraCelda.getByText('Efectivo al final', { exact: true })).toBeVisible();
+    await expect(primeraCelda.getByText('Solo incluye movimientos programados.')).toBeVisible();
+
+    // Un segundo Enter lo cierra.
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('a 375 px la lista de movimientos abierta no provoca scroll horizontal', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await openLanding(page);
+    await enterDemo(page);
+    await skipTour(page);
+
+    await page.getByRole('button', { name: /¿Me alcanza hasta el/i }).click();
+    await expect(page.getByText('Solo incluye movimientos programados.')).toBeVisible();
+    const sobrante = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    expect(sobrante).toBeLessThanOrEqual(0);
+  });
+
   test('desde el dashboard se puede navegar a Transacciones', async ({ page }) => {
     // Cada test arranca una página nueva, así que repetimos el acceso desde la
     // landing y cerramos el tutorial, cuyo overlay taparía el menú.

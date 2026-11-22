@@ -11,6 +11,9 @@ import useDebtStore from '../../stores/useDebtStore';
 import useCategoryStore from '../../stores/useCategoryStore';
 import useBudgetStore from '../../stores/useBudgetStore';
 import useCreditCardStore from '../../stores/useCreditCardStore';
+import useRecurringStore from '../../stores/useRecurringStore';
+import { getCurrency } from '../../utils/currencyRuntime';
+import { getCashflowUntilCardDue } from '../../utils/cashflowProjection';
 import { getBudgetSummary } from '../../utils/calculations';
 import { getNextLoanDueDate } from '../../utils/loanReminders';
 import { formatCurrency, formatDate } from '../../utils/formatters';
@@ -38,6 +41,7 @@ export default function StitchDashboard() {
   const debts = useDebtStore((s) => s.debts);
   const cards = useCreditCardStore((s) => s.cards);
   const goals = useSavingsStore((s) => s.goals);
+  const recurring = useRecurringStore((s) => s.recurring);
 
   const now = useMemo(() => new Date(), []);
 
@@ -77,6 +81,9 @@ export default function StitchDashboard() {
   // Los gastos con tarjeta NO restan del efectivo; los pagos de tarjeta sí.
   const demo = isDemoActive();
   const initialCashBalance = usePrefsStore((s) => s.initialCashBalance);
+  // Moneda del perfil (null hasta elegirla: getCurrency() cae en DOP). Está en las
+  // dependencias para recalcular si cambia.
+  const profileCurrency = usePrefsStore((s) => s.currency);
 
   // Rango del gráfico de tendencia: 3 meses / 1 año / todo el tiempo. Siempre
   // termina en el mes actual (now) y arranca a lo sumo en la primera transacción.
@@ -105,6 +112,14 @@ export default function StitchDashboard() {
   const realMoney = useMemo(
     () => getRealMoney(transactions, initialCashBalance, cards, now),
     [transactions, initialCashBalance, cards, now],
+  );
+  // Movimientos previstos del efectivo hasta el pago de las tarjetas (de HOY).
+  const cashflow = useMemo(
+    () => getCashflowUntilCardDue({
+      transactions, initialCashBalance, cards, recurring, debts, debtPayments: payments,
+      currency: profileCurrency || getCurrency(), refDate: now,
+    }),
+    [transactions, initialCashBalance, cards, recurring, debts, payments, profileCurrency, now],
   );
   const wealthSeries = useMemo(
     () => getWealthTimeline(transactions, initialCashBalance, wealthRange, now, cards, currentSavings),
@@ -175,7 +190,7 @@ export default function StitchDashboard() {
       <Stagger data-tour="dashboard-grid" className="grid grid-cols-2 md:grid-cols-12 gap-sm auto-rows-min">
         {/* 0 · DINERO REAL a todo el ancho, antes del hero: siempre de hoy. */}
         <Stagger.Item className="col-span-2 md:col-span-12">
-          <RealMoneyCard data={realMoney} totalSavings={currentSavings} />
+          <RealMoneyCard data={realMoney} totalSavings={currentSavings} cashflow={cashflow} />
         </Stagger.Item>
 
         {/* 1 · HERO a TODO EL ANCHO (col-12): el gráfico del patrimonio es el

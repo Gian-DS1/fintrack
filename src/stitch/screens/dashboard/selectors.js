@@ -440,12 +440,18 @@ export function getNetWorthSplit(totalSaved, totalDebt) {
   };
 }
 
+// Núcleo puro del faltante: cuánto falta para cubrir `amount` con `available`,
+// sea el efectivo de hoy o el saldo previsto en una fecha futura (entrega 2).
+export function computeShortfall(available, amount) {
+  const avail = Number(available) || 0;
+  const amt = Number(amount) || 0;
+  return { available: avail, shortfall: Math.max(0, amt - avail) };
+}
+
 // Cuánto falta de efectivo para cubrir un pago. `shortfall` es lo que habría que
 // tomar de ahorros; `available` es el efectivo disponible hoy.
 export function getCashShortfall(transactions, initialCashBalance, cards, paymentAmount) {
-  const available = getLiquidCash(transactions, initialCashBalance, cards);
-  const amt = Number(paymentAmount) || 0;
-  return { available, shortfall: Math.max(0, amt - available) };
+  return computeShortfall(getLiquidCash(transactions, initialCashBalance, cards), paymentAmount);
 }
 
 // ¿Se puede pagar? (efectivo + ahorros ≥ pago). totalSavings = Σ goal.currentAmount.
