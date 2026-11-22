@@ -45,6 +45,15 @@ const SHOTS = [
   { name: 'transactions', path: '/transacciones', viewport: DESKTOP },
   { name: 'finances', path: '/mis-finanzas', viewport: DESKTOP },
   { name: 'calendar', path: '/calendario', viewport: DESKTOP },
+  {
+    name: 'projection',
+    path: '/proyeccion',
+    viewport: DESKTOP,
+    // La curva se dibuja tras montar la pantalla: espera al título antes de capturar.
+    prepare: async (page) => {
+      await page.getByRole('heading', { level: 1, name: /Proyección/i }).waitFor({ timeout: 10_000 });
+    },
+  },
   { name: 'dashboard-mobile', path: '/', viewport: MOBILE },
 ];
 

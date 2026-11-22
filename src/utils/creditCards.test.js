@@ -32,12 +32,44 @@ describe('getCardCycles', () => {
 describe('getStatementAmount', () => {
   it('suma solo las transacciones de esa tarjeta dentro de la ventana', () => {
     const txs = [
-      { cardId: 'c1', date: '2026-05-10', amount: 1000 },
-      { cardId: 'c1', date: '2026-05-25', amount: 500 },
-      { cardId: 'c2', date: '2026-05-10', amount: 999 },
-      { cardId: 'c1', date: '2026-04-30', amount: 200 },
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 1000 },
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-25', amount: 500 },
+      { cardId: 'c2', type: 'variable_expense', date: '2026-05-10', amount: 999 },
+      { cardId: 'c1', type: 'variable_expense', date: '2026-04-30', amount: 200 },
     ];
     expect(getStatementAmount(txs, 'c1', '2026-05-01', '2026-05-20')).toBe(1000);
+  });
+});
+
+describe('cálculos de tarjeta: solo cuentan gastos', () => {
+  // Registros viejos pueden traer `cardId` en un ingreso o un ahorro (el formulario
+  // lo dejaba guardado al cambiar de tipo). No son consumo de la tarjeta.
+  const card = { id: 'c1', cutoffDay: 20, dueDay: 5, payments: [] };
+  const ref = new Date(2026, 4, 28);
+  const txs = [
+    { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 1000, cashbackEarned: 20 },
+    { cardId: 'c1', type: 'income', date: '2026-05-10', amount: 5000, cashbackEarned: 50 },
+    { cardId: 'c1', type: 'savings', date: '2026-05-10', amount: 700, cashbackEarned: 30 },
+  ];
+
+  it('getStatementAmount ignora ingresos y ahorros con cardId', () => {
+    expect(getStatementAmount(txs, 'c1', '2026-05-01', '2026-05-20')).toBe(1000);
+  });
+
+  it('getStatementAmount suma los tres tipos de gasto', () => {
+    const gastos = ['expense', 'fixed_expense', 'variable_expense']
+      .map((type) => ({ cardId: 'c1', type, date: '2026-05-10', amount: 100 }));
+    expect(getStatementAmount(gastos, 'c1', '2026-05-01', '2026-05-20')).toBe(300);
+  });
+
+  it('el cashback del estado de cuenta ignora lo que no es gasto', () => {
+    // Facturado neto = 1000 − 20 (el cashback de 50 y 30 no cuenta).
+    expect(getCardBalances(card, txs, ref).billed).toBe(980);
+  });
+
+  it('getCardOutstanding sin ciclo válido ignora lo que no es gasto', () => {
+    const sinCiclo = { id: 'c1', payments: [] };
+    expect(getCardOutstanding(sinCiclo, txs, ref).owed).toBe(980);
   });
 });
 
@@ -71,11 +103,20 @@ describe('getStatementHistory / getLifetimeCashback', () => {
 
   it('suma el cashback de por vida desde las transacciones de la tarjeta', () => {
     const txs = [
-      { cardId: 'c1', cashbackEarned: 12.5 },
-      { cardId: 'c1', cashbackEarned: 30 },
-      { cardId: 'c2', cashbackEarned: 99 },
+      { cardId: 'c1', type: 'variable_expense', cashbackEarned: 12.5 },
+      { cardId: 'c1', type: 'variable_expense', cashbackEarned: 30 },
+      { cardId: 'c2', type: 'variable_expense', cashbackEarned: 99 },
     ];
     expect(getLifetimeCashback({ id: 'c1' }, txs)).toBe(42.5);
+  });
+
+  it('el cashback de por vida ignora ingresos y ahorros con cardId huérfano', () => {
+    const txs = [
+      { cardId: 'c1', type: 'variable_expense', cashbackEarned: 12.5 },
+      { cardId: 'c1', type: 'income', cashbackEarned: 40 },
+      { cardId: 'c1', type: 'savings', cashbackEarned: 7 },
+    ];
+    expect(getLifetimeCashback({ id: 'c1' }, txs)).toBe(12.5);
   });
 
   it('devuelve vacío/0 si no hay historial', () => {
@@ -127,8 +168,8 @@ describe('paidCyclesToPayments', () => {
     const card = { id: 'c1', cutoffDay: 20, paidCycles: ['2026-04-20'] };
     // Ventana del ciclo que cierra el 2026-04-20: (2026-03-21 .. 2026-04-20)
     const txs = [
-      { cardId: 'c1', date: '2026-04-10', amount: 3000, cashbackEarned: 0 },
-      { cardId: 'c1', date: '2026-05-10', amount: 9999, cashbackEarned: 0 }, // fuera de la ventana
+      { cardId: 'c1', type: 'variable_expense', date: '2026-04-10', amount: 3000, cashbackEarned: 0 },
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 9999, cashbackEarned: 0 }, // fuera de la ventana
     ];
     const out = paidCyclesToPayments(card, txs);
     expect(out).toEqual([
@@ -144,7 +185,7 @@ describe('paidCyclesToPayments', () => {
 
   it('resta el cashback al reconstruir el monto de una entrada legada', () => {
     const card = { id: 'c1', cutoffDay: 20, paidCycles: ['2026-04-20'] };
-    const txs = [{ cardId: 'c1', date: '2026-04-10', amount: 3000, cashbackEarned: 100 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-04-10', amount: 3000, cashbackEarned: 100 }];
     expect(paidCyclesToPayments(card, txs)).toEqual([
       { id: 'mig-2026-04-20', amount: 2900, date: '2026-04-20', note: 'Migrado: estado de cuenta pagado' },
     ]);
@@ -157,8 +198,8 @@ describe('getCardBalances', () => {
 
   it('caso clienta: paga al corte, arrastra el ciclo abierto', () => {
     const txs = [
-      { cardId: 'c1', date: '2026-05-10', amount: 10000, cashbackEarned: 0 }, // facturado
-      { cardId: 'c1', date: '2026-05-25', amount: 5000, cashbackEarned: 0 },  // ciclo abierto
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 10000, cashbackEarned: 0 }, // facturado
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-25', amount: 5000, cashbackEarned: 0 },  // ciclo abierto
     ];
     const b0 = getCardBalances(card, txs, ref);
     expect(b0.billed).toBe(10000);
@@ -177,7 +218,7 @@ describe('getCardBalances', () => {
   });
 
   it('caso sobregasto: abono parcial deja saldo arrastrado', () => {
-    const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 20000, cashbackEarned: 0 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 20000, cashbackEarned: 0 }];
     const c1 = { ...card, payments: [{ id: 'a1', amount: 12000, date: '2026-05-21' }] };
     expect(getCardBalances(c1, txs, ref).pendingBilled).toBe(8000);
     const c2 = { ...card, payments: [
@@ -189,8 +230,8 @@ describe('getCardBalances', () => {
 
   it('sobre-abono (prepago): el excedente reduce el ciclo abierto, nada negativo', () => {
     const txs = [
-      { cardId: 'c1', date: '2026-05-10', amount: 10000, cashbackEarned: 0 },
-      { cardId: 'c1', date: '2026-05-25', amount: 5000, cashbackEarned: 0 },
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 10000, cashbackEarned: 0 },
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-25', amount: 5000, cashbackEarned: 0 },
     ];
     const c = { ...card, payments: [{ id: 'a1', amount: 12000, date: '2026-05-21' }] };
     const b = getCardBalances(c, txs, ref);
@@ -202,8 +243,8 @@ describe('getCardBalances', () => {
 
   it('spansMultipleCycles cuando hay saldo de meses anteriores sin pagar', () => {
     const txs = [
-      { cardId: 'c1', date: '2026-03-10', amount: 5000, cashbackEarned: 0 },  // ciclo viejo
-      { cardId: 'c1', date: '2026-05-10', amount: 10000, cashbackEarned: 0 }, // ciclo actual
+      { cardId: 'c1', type: 'variable_expense', date: '2026-03-10', amount: 5000, cashbackEarned: 0 },  // ciclo viejo
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 10000, cashbackEarned: 0 }, // ciclo actual
     ];
     expect(getCardBalances({ ...card }, txs, ref).spansMultipleCycles).toBe(true);
     const conAbono = { ...card, payments: [{ id: 'a1', amount: 5000, date: '2026-05-21' }] };
@@ -211,13 +252,13 @@ describe('getCardBalances', () => {
   });
 
   it('descuenta el cashback del monto facturado', () => {
-    const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 10000, cashbackEarned: 300 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 10000, cashbackEarned: 300 }];
     expect(getCardBalances(card, txs, ref).billed).toBe(9700);
     expect(getCardBalances(card, txs, ref).pendingBilled).toBe(9700);
   });
 
   it('un paidCycle legado cuenta como abonado (saldo cuadra)', () => {
-    const txs = [{ cardId: 'c1', date: '2026-04-10', amount: 8000, cashbackEarned: 0 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-04-10', amount: 8000, cashbackEarned: 0 }];
     const legacy = { id: 'c1', cutoffDay: 20, dueDay: 5, payments: [],
       paidCycles: [{ cycleEnd: '2026-04-20', amount: 8000, paidAt: '2026-05-01' }] };
     const b = getCardBalances(legacy, txs, ref);
@@ -239,7 +280,7 @@ describe('getCardBalances', () => {
   });
 
   it('openingBalance se combina con consumos facturados y se puede abonar', () => {
-    const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
     const c = { ...card, openingBalance: 10000 };
     const b = getCardBalances(c, txs, ref);
     expect(b.billed).toBe(15000); // 10000 previo + 5000 facturado
@@ -249,7 +290,7 @@ describe('getCardBalances', () => {
   });
 
   it('sin openingBalance (o 0) el comportamiento no cambia', () => {
-    const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 7000, cashbackEarned: 0 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 7000, cashbackEarned: 0 }];
     expect(getCardBalances({ ...card, openingBalance: 0 }, txs, ref).billed).toBe(7000);
     expect(getCardBalances({ ...card }, txs, ref).billed).toBe(7000); // sin la prop
   });
@@ -278,9 +319,9 @@ describe('getCardBalances — invariante de abono parcial (caso Mastercard Plus 
   };
   const ref = new Date(2026, 6, 16); // corte 2026-06-20 cerrado, hoy 16 jul 2026
   const txs = [
-    { cardId: 'ccn1', categoryId: 'ccn', amount: 4000, date: '2026-05-10', cashbackEarned: 0 },  // ciclo legado pagado
-    { cardId: 'ccn1', categoryId: 'ccn', amount: 9000, date: '2026-06-10', cashbackEarned: 0 },  // facturado (corte 20 jun)
-    { cardId: 'ccn1', categoryId: 'ccn', amount: 2500, date: '2026-07-05', cashbackEarned: 0 },  // ciclo abierto
+    { cardId: 'ccn1', type: 'variable_expense', categoryId: 'ccn', amount: 4000, date: '2026-05-10', cashbackEarned: 0 },  // ciclo legado pagado
+    { cardId: 'ccn1', type: 'variable_expense', categoryId: 'ccn', amount: 9000, date: '2026-06-10', cashbackEarned: 0 },  // facturado (corte 20 jun)
+    { cardId: 'ccn1', type: 'variable_expense', categoryId: 'ccn', amount: 2500, date: '2026-07-05', cashbackEarned: 0 },  // ciclo abierto
   ];
 
   it('sin abonos: por pagar = saldo inicial + facturado no pagado', () => {
@@ -368,16 +409,16 @@ describe('getDerivedCashback — cashback CCN acumulado por CICLO DE CORTE', () 
   const ref = new Date(2026, 5, 7);
   const txs = [
     // Dentro del ciclo (26 may–25 jun): 5000 + 6000 + 12000 = 23000 → nivel 8%.
-    { cardId: 'card1', categoryId: 'ccn', amount: 5000, date: '2026-05-28' },
-    { cardId: 'card1', categoryId: 'ccn', amount: 6000, date: '2026-06-10' },
-    { cardId: 'card1', categoryId: 'ccn', amount: 12000, date: '2026-06-24' },
+    { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-05-28' },
+    { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 6000, date: '2026-06-10' },
+    { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 12000, date: '2026-06-24' },
     // Fuera del ciclo: antes del corte anterior (ciclo previo).
-    { cardId: 'card1', categoryId: 'ccn', amount: 9999, date: '2026-05-20' },
+    { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 9999, date: '2026-05-20' },
     // En el día del próximo corte +1 (ya es el siguiente ciclo): no cuenta.
-    { cardId: 'card1', categoryId: 'ccn', amount: 9999, date: '2026-06-26' },
+    { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 9999, date: '2026-06-26' },
     // Otra tarjeta / otra categoría: no cuentan.
-    { cardId: 'otra', categoryId: 'ccn', amount: 9999, date: '2026-06-10' },
-    { cardId: 'card1', categoryId: 'super', amount: 9999, date: '2026-06-10' },
+    { cardId: 'otra', type: 'variable_expense', categoryId: 'ccn', amount: 9999, date: '2026-06-10' },
+    { cardId: 'card1', type: 'variable_expense', categoryId: 'super', amount: 9999, date: '2026-06-10' },
   ];
 
   it('hasTieredRule detecta la regla escalonada', () => {
@@ -392,15 +433,23 @@ describe('getDerivedCashback — cashback CCN acumulado por CICLO DE CORTE', () 
 
   it('una transacción justo en el corte anterior NO entra; el día siguiente SÍ', () => {
     // El ciclo abierto arranca el día DESPUÉS del corte (openStartISO).
-    const onlyCutoffDay = [{ cardId: 'card1', categoryId: 'ccn', amount: 5000, date: '2026-05-25' }];
+    const onlyCutoffDay = [{ cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-05-25' }];
     expect(getDerivedCashback(card, onlyCutoffDay, ref)).toBe(0); // 25 = corte anterior, fuera
-    const dayAfter = [{ cardId: 'card1', categoryId: 'ccn', amount: 5000, date: '2026-05-26' }];
+    const dayAfter = [{ cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-05-26' }];
     expect(getDerivedCashback(card, dayAfter, ref)).toBe(250); // 5000 * 5%
   });
 
   it('ciclo sin consumo CCN → 0', () => {
     const otherRef = new Date(2026, 7, 7); // ago: ciclo 26 jul–25 ago, sin txs CCN
     expect(getDerivedCashback(card, txs, otherRef)).toBe(0);
+  });
+
+  it('un ingreso con cardId huérfano en la categoría escalonada no sube el nivel', () => {
+    const orfano = [
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-06-10' },
+      { cardId: 'card1', type: 'income', categoryId: 'ccn', amount: 20000, date: '2026-06-11' },
+    ];
+    expect(getDerivedCashback(card, orfano, ref)).toBe(250); // 5000 al 5%, no 25000 al 8%
   });
 
   it('tarjeta sin regla escalonada → 0', () => {
@@ -426,17 +475,23 @@ describe('getTransactionCashback — cashback estimado por transacción', () => 
   // refDate = 7 jun 2026 → ciclo abierto: 26 may 2026 a 25 jun 2026.
   const ref = new Date(2026, 5, 7);
 
+  it('tarjeta escalonada: un ingreso con cardId huérfano no sube el nivel del acumulado', () => {
+    const gasto = { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-06-10' };
+    const orfano = { cardId: 'card1', type: 'income', categoryId: 'ccn', amount: 20000, date: '2026-06-11' };
+    expect(getTransactionCashback(tieredCard, gasto, [gasto, orfano])).toBe(250); // 5%
+  });
+
   it('tarjeta plana: delega en computeCashback (% por transacción)', () => {
-    const tx = { cardId: 'card2', categoryId: 'super', amount: 1000, date: '2026-06-10' };
+    const tx = { cardId: 'card2', type: 'variable_expense', categoryId: 'super', amount: 1000, date: '2026-06-10' };
     expect(getTransactionCashback(flatCard, tx, [tx], ref)).toBe(30);
   });
 
   it('tarjeta escalonada: aplica el % del nivel del ciclo al monto de la transacción', () => {
     // Ciclo acumula 23000 (5000+6000+12000) → nivel 8%. Cada fila estima 8% de su monto.
     const txs = [
-      { cardId: 'card1', categoryId: 'ccn', amount: 5000, date: '2026-05-28' },
-      { cardId: 'card1', categoryId: 'ccn', amount: 6000, date: '2026-06-10' },
-      { cardId: 'card1', categoryId: 'ccn', amount: 12000, date: '2026-06-24' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-05-28' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 6000, date: '2026-06-10' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 12000, date: '2026-06-24' },
     ];
     expect(getTransactionCashback(tieredCard, txs[0], txs, ref)).toBe(400);  // 5000 * 8%
     expect(getTransactionCashback(tieredCard, txs[1], txs, ref)).toBe(480);  // 6000 * 8%
@@ -445,22 +500,22 @@ describe('getTransactionCashback — cashback estimado por transacción', () => 
 
   it('la suma de las filas del ciclo iguala getDerivedCashback', () => {
     const txs = [
-      { cardId: 'card1', categoryId: 'ccn', amount: 5000, date: '2026-05-28' },
-      { cardId: 'card1', categoryId: 'ccn', amount: 6000, date: '2026-06-10' },
-      { cardId: 'card1', categoryId: 'ccn', amount: 12000, date: '2026-06-24' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-05-28' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 6000, date: '2026-06-10' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 12000, date: '2026-06-24' },
     ];
     const sum = txs.reduce((s, t) => s + getTransactionCashback(tieredCard, t, txs, ref), 0);
     expect(sum).toBeCloseTo(getDerivedCashback(tieredCard, txs, ref), 2);
   });
 
   it('transacción de otra categoría en tarjeta escalonada → 0', () => {
-    const txs = [{ cardId: 'card1', categoryId: 'super', amount: 5000, date: '2026-06-10' }];
+    const txs = [{ cardId: 'card1', type: 'variable_expense', categoryId: 'super', amount: 5000, date: '2026-06-10' }];
     expect(getTransactionCashback(tieredCard, txs[0], txs)).toBe(0);
   });
 
   it('sin tarjeta o monto inválido → 0', () => {
     expect(getTransactionCashback(null, { amount: 1000 }, [])).toBe(0);
-    expect(getTransactionCashback(tieredCard, { cardId: 'card1', categoryId: 'ccn', amount: 0, date: '2026-06-10' }, [])).toBe(0);
+    expect(getTransactionCashback(tieredCard, { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 0, date: '2026-06-10' }, [])).toBe(0);
   });
 
   it('transacción de un CICLO PASADO: usa el acumulado de SU propio ciclo', () => {
@@ -468,9 +523,9 @@ describe('getTransactionCashback — cashback estimado por transacción', () => 
     // el acumulado de ESE ciclo, no del actual.
     const txs = [
       // Ciclo abril–mayo (26 abr–25 may): 5000 → nivel 5%.
-      { cardId: 'card1', categoryId: 'ccn', amount: 5000, date: '2026-05-10' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 5000, date: '2026-05-10' },
       // Ciclo actual (26 may–25 jun): 12000 → nivel 6%.
-      { cardId: 'card1', categoryId: 'ccn', amount: 12000, date: '2026-06-10' },
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 12000, date: '2026-06-10' },
     ];
     // La del ciclo pasado: 5000 acumulado → 5% → 250.
     expect(getTransactionCashback(tieredCard, txs[0], txs)).toBe(250);
@@ -481,8 +536,8 @@ describe('getTransactionCashback — cashback estimado por transacción', () => 
   it('cada ciclo acumula por separado (no se mezclan al subir de nivel)', () => {
     // Dos transacciones, una por ciclo. Cada una sola en su ciclo → nivel 5%.
     const txs = [
-      { cardId: 'card1', categoryId: 'ccn', amount: 6000, date: '2026-04-10' }, // ciclo mar–abr
-      { cardId: 'card1', categoryId: 'ccn', amount: 6000, date: '2026-05-10' }, // ciclo abr–may
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 6000, date: '2026-04-10' }, // ciclo mar–abr
+      { cardId: 'card1', type: 'variable_expense', categoryId: 'ccn', amount: 6000, date: '2026-05-10' }, // ciclo abr–may
     ];
     expect(getTransactionCashback(tieredCard, txs[0], txs)).toBe(300); // 6000 * 5%
     expect(getTransactionCashback(tieredCard, txs[1], txs)).toBe(300); // 6000 * 5%
@@ -543,8 +598,8 @@ describe('getCardOutstanding', () => {
 
   it('con ciclo válido coincide con getCardBalances().totalBalance (facturado + ciclo abierto)', () => {
     const txs = [
-      { cardId: 'c1', date: '2026-05-10', amount: 3000, cashbackEarned: 30 }, // facturado
-      { cardId: 'c1', date: '2026-05-25', amount: 1200, cashbackEarned: 0 },  // ciclo abierto
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 3000, cashbackEarned: 30 }, // facturado
+      { cardId: 'c1', type: 'variable_expense', date: '2026-05-25', amount: 1200, cashbackEarned: 0 },  // ciclo abierto
     ];
     const withPayment = { ...card, openingBalance: 500, payments: [{ id: 'p1', amount: 1000 }] };
     for (const c of [card, withPayment]) {
@@ -554,13 +609,13 @@ describe('getCardOutstanding', () => {
   });
 
   it('el ciclo abierto suma al saldo aunque el facturado pendiente sea 0', () => {
-    const txs = [{ cardId: 'c1', date: '2026-05-25', amount: 2000, cashbackEarned: 0 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-25', amount: 2000, cashbackEarned: 0 }];
     expect(getCardBalances(card, txs, ref).pendingBilled).toBe(0);
     expect(getCardOutstanding(card, txs, ref).owed).toBe(2000);
   });
 
   it('un sobrepago deja el saldo en 0, nunca negativo', () => {
-    const txs = [{ cardId: 'c1', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
+    const txs = [{ cardId: 'c1', type: 'variable_expense', date: '2026-05-10', amount: 5000, cashbackEarned: 0 }];
     const overpaid = { ...card, payments: [{ id: 'p1', amount: 8000 }] };
     expect(getCardOutstanding(overpaid, txs, ref).owed).toBe(0);
   });
@@ -588,7 +643,7 @@ describe('hasValidCardCycle', () => {
 describe('getCardOutstanding · tarjeta sin ciclo válido', () => {
   const ref = new Date(2026, 4, 28);
   const noCycle = (extra = {}) => ({ id: 'c1', cutoffDay: NaN, dueDay: 5, payments: [], ...extra });
-  const spend = (amount, date, cashbackEarned = 0) => ({ cardId: 'c1', date, amount, cashbackEarned });
+  const spend = (amount, date, cashbackEarned = 0) => ({ cardId: 'c1', type: 'variable_expense', date, amount, cashbackEarned });
 
   it('regresión: con corte NaN getCardBalances ignora el consumo, pero el saldo pendiente no', () => {
     const txs = [spend(5000, '2026-05-10')];
@@ -631,7 +686,7 @@ describe('getCardOutstanding · tarjeta sin ciclo válido', () => {
   });
 
   it('ignora las transacciones de otras tarjetas', () => {
-    const txs = [spend(5000, '2026-05-10'), { cardId: 'otra', date: '2026-05-10', amount: 777, cashbackEarned: 0 }];
+    const txs = [spend(5000, '2026-05-10'), { cardId: 'otra', type: 'variable_expense', date: '2026-05-10', amount: 777, cashbackEarned: 0 }];
     expect(getCardOutstanding(noCycle(), txs, ref).owed).toBe(5000);
   });
 });

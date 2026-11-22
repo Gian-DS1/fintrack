@@ -18,7 +18,7 @@ import useTransactionStore from '../../stores/useTransactionStore';
 import useCategoryStore from '../../stores/useCategoryStore';
 import useCreditCardStore from '../../stores/useCreditCardStore';
 import useRecurringStore, { advanceDate } from '../../stores/useRecurringStore';
-import { computeCashback, getTransactionCashback, hasTieredRule } from '../../utils/creditCards';
+import { computeCashback, getTransactionCashback, hasTieredRule, isExpenseType } from '../../utils/creditCards';
 import { autoCategorize } from '../../data/defaultCategories';
 import { suggestFromHistory } from '../../data/transactionMemory';
 import { formatCurrency, formatDate, todayISO, titleCase, getTypeLabel } from '../../utils/formatters';
@@ -94,9 +94,6 @@ export default function StitchLedger() {
     );
   };
 
-  // ¿Es un gasto? (fijo o variable). El cashback y la tarjeta solo aplican a gastos.
-  const isExpenseType = (t) => t === 'expense' || t === 'fixed_expense' || t === 'variable_expense';
-
   // Cashback que se CONGELA en la transacción (cashback_earned). Solo aplica a
   // reglas planas; las escalonadas NO se congelan (su cashback es derivado en
   // vivo por ciclo, vía getDerivedCashback). Esto es lo que se guarda.
@@ -137,6 +134,10 @@ export default function StitchLedger() {
     return card ? card.id : '';
   };
 
+  // La tarjeta solo aplica a gastos: si el tipo deja de serlo (la categoría lo
+  // manda), el selector se oculta y el `cardId` que quedó no debe guardarse.
+  const dropCardIfNotExpense = (f) => (isExpenseType(f.type) || !f.cardId ? f : { ...f, cardId: '' });
+
   const onDescription = (raw) => {
     // Auto-capitaliza la primera letra mientras se escribe; al guardar,
     // titleCase completa el resto de las palabras.
@@ -168,7 +169,7 @@ export default function StitchLedger() {
           if (suggested) { next.cardId = suggested; applied.card = true; }
         }
       }
-      return next;
+      return dropCardIfNotExpense(next);
     });
     setAutoSet(applied);
   };
@@ -185,7 +186,7 @@ export default function StitchLedger() {
         const suggested = cardForCategory(id);
         if (suggested) next.cardId = suggested;
       }
-      return next;
+      return dropCardIfNotExpense(next);
     });
   };
 

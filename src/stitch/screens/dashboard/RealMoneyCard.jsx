@@ -18,7 +18,10 @@ const fmt = (n) => formatCurrency(n);
 const CARDS_PATH = '/mis-finanzas?tab=cards';
 const PROJECTION_PATH = '/proyeccion';
 
-export default function RealMoneyCard({ data, totalSavings, cashflow }) {
+// Ajustes, directo al campo del efectivo inicial (StitchSettings lo enfoca con el ancla).
+const SETTINGS_PATH = '/ajustes#efectivo-inicial';
+
+export default function RealMoneyCard({ data, totalSavings, cashflow, legacyPaidCycles = false, onDismissLegacy }) {
   const { t } = useI18n();
   const { cash, cardsOwed, realMoney, isCritical, shortfall, cards, cardsWithoutCycle } = data;
   const hasCards = cards.length > 0;
@@ -66,6 +69,20 @@ export default function RealMoneyCard({ data, totalSavings, cashflow }) {
         <p className="mt-sm font-label-sm text-label-sm text-text-muted">
           {t('dashboard.cardsWithoutCycle').replace('{n}', cardsWithoutCycle)}
         </p>
+      )}
+
+      {legacyPaidCycles && (
+        <div className="mt-sm flex flex-col gap-xs">
+          <p className="font-label-sm text-label-sm text-text-muted">{t('dashboard.legacyPaidCycles')}</p>
+          <div className="flex flex-wrap gap-x-lg gap-y-xs">
+            <Link to={SETTINGS_PATH} className="font-mono-data text-mono-data text-primary hover:underline">
+              {t('dashboard.legacyPaidCyclesLink')}
+            </Link>
+            <button type="button" onClick={onDismissLegacy} className="font-mono-data text-mono-data text-primary hover:underline">
+              {t('dashboard.legacyPaidCyclesDismiss')}
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="mt-sm flex flex-wrap gap-x-lg gap-y-xs">

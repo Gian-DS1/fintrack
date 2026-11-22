@@ -3,6 +3,7 @@
 import { groupByCategory, getEffectiveAmount } from '../../../utils/calculations';
 import { getCardBalances, getCardOutstanding } from '../../../utils/creditCards';
 import { tr, monthShort } from '../../../i18n/runtime';
+import { toISODate } from '../../../utils/formatters';
 
 const OTROS_COLOR = '#6b7280';
 const OTROS_ICON = '📦';
@@ -174,6 +175,21 @@ function cashEffect(t) {
   return 0;
 }
 
+// Saldo pendiente COMPLETO de todas las tarjetas (facturado + ciclo abierto −
+// abonos, neto de cashback) tal como estaba al cierre de `day`: solo cuentan los
+// consumos de `txs` ya registrados (el llamador pasa los de fecha ≤ día) y los
+// abonos con fecha ≤ día (sin fecha: ya ocurrido, igual que en el efectivo).
+// Misma regla que getRealMoney (getCardOutstanding), así el punto de hoy coincide
+// con el dinero real. Los estados de cuenta legados (`paidCycles`) se cuentan
+// completos en cualquier fecha: no llevan fecha de pago fiable.
+function cardsOwedAt(cards, txsUpToDay, day) {
+  const dayISO = toISODate(day);
+  return (cards || []).reduce((sum, c) => {
+    const upToDay = { ...c, payments: (c.payments || []).filter((p) => !p.date || p.date <= dayISO) };
+    return sum + getCardOutstanding(upToDay, txsUpToDay, day).owed;
+  }, 0);
+}
+
 // Patrimonio líquido (efectivo + ahorros) ACUMULADO al cierre de cada mes del
 // rango — un saldo corrido que muestra el crecimiento en el tiempo. La clave:
 // apartar a ahorro mueve dinero de efectivo a ahorro pero NO cambia el total, así
@@ -182,7 +198,7 @@ function cashEffect(t) {
 // `range`: número de meses (3, 12…) o 'all'. En TODOS los casos el rango se
 // recorta para NO ir antes de la primera transacción (no se muestran meses vacíos
 // previos a los datos). `cards` (opcional) permite calcular las "tarjetas por
-// pagar" históricas por mes (saldo facturado pendiente al cierre de cada mes).
+// pagar" históricas por mes (saldo pendiente completo al cierre de cada mes).
 // `currentSavings` es el ahorro REAL de hoy (Σ goal.currentAmount, incluye el saldo
 // que ya tenían las metas antes de usar la app). El ahorro de cada mes se reconstruye
 // hacia atrás desde ese total real, restando los aportes (savings) posteriores al
@@ -240,15 +256,16 @@ export function getCumulativeLiquidWealth(transactions, initialCashBalance, rang
     }
     // Tasa de ahorro del mes: (ingresos − gastos) / ingresos, en %.
     const savingsRate = income > 0 ? ((income - expense) / income) * 100 : 0;
-    // Tarjetas por pagar al cierre del mes (saldo facturado pendiente).
-    const cardsDue = (cards || []).reduce(
-      (sum, c) => sum + (getCardBalances(c, txs, monthRef).pendingBilled || 0), 0,
-    );
+    // Tarjetas por pagar al cierre del mes: saldo pendiente COMPLETO (facturado +
+    // ciclo abierto − abonos), con los consumos y abonos hasta ese cierre.
+    const monthRefISO = toISODate(monthRef);
+    const cardsDue = (cards || []).length
+      ? cardsOwedAt(cards, txs.filter((t) => t.date && t.date <= monthRefISO), monthRef)
+      : 0;
     // Dinero total = patrimonio neto LÍQUIDO: efectivo + ahorro − tarjetas por
-    // pagar. Restar la deuda de tarjetas evita que "Mi dinero total" iguale al
-    // "Efectivo disponible" cuando no hay ahorro, y refleja lo que de verdad
-    // queda tras saldar lo facturado. No topa en 0: si debes más de lo que
-    // tienes, el neto puede ser negativo (señal honesta).
+    // pagar (saldo completo, la misma regla del dinero real). Evita que "Mi dinero
+    // total" se vea sano cuando las tarjetas superan al efectivo. No topa en 0: si
+    // debes más de lo que tienes, el neto puede ser negativo (señal honesta).
     const wealth = cash + savings - cardsDue;
     return { label: monthShort(m), y, m, income, expense, cash, savings, wealth, savingsRate, cardsDue };
   });
@@ -340,9 +357,12 @@ export function getWealthTimeline(transactions, initialCashBalance, range, refDa
       pi++;
     }
     const savings = (Number(currentSavings) || 0) - futureSavings;
-    const cardsDue = (cards || []).reduce(
-      (sum, c) => sum + (getCardBalances(c, txs, day).pendingBilled || 0), 0,
-    );
+    // Saldo completo de tarjetas con lo registrado hasta este día (sorted[0..ti)).
+    // En el último punto (hoy) entra TODO, igual que en getRealMoney: un gasto con
+    // tarjeta fechado más adelante dentro del ciclo abierto ya es deuda de la tarjeta.
+    const cardsDue = (cards || []).length
+      ? cardsOwedAt(cards, i === dayCount - 1 ? sorted : sorted.slice(0, ti), day)
+      : 0;
     out.push({
       key: `${day.getFullYear()}-${pad2(day.getMonth() + 1)}-${pad2(day.getDate())}`,
       y: day.getFullYear(), m: day.getMonth(), d: day.getDate(),
@@ -422,7 +442,17 @@ export function getCardReminders(cards, transactions, refDate = new Date(), wind
 // el patrimonio neto líquido (wealth); se ignoran argumentos heredados del viejo
 // toggle barras/línea para no romper llamadas existentes.
 export function getHeroMetric() {
-  return { key: 'wealth', labelKey: 'dashboard.netWorth', infoKey: 'dashboard.myMoneyTotalInfo' };
+  return { key: 'wealth', labelKey: 'dashboard.myMoneyTotal', infoKey: 'dashboard.myMoneyTotalInfo' };
+}
+
+// Patrimonio neto de HOY para «Mis finanzas»: efectivo + ahorro − préstamos −
+// saldo pendiente completo de tarjetas. Con `totalDebt` en 0 es el dinero real
+// más el ahorro (`getRealMoney().realMoney + ahorro`).
+export function getNetWorth(transactions, initialCashBalance, cards, totalSaved, totalDebt, refDate = new Date()) {
+  const { cash, cardsOwed, realMoney } = getRealMoney(transactions, initialCashBalance, cards, refDate);
+  const savings = Number(totalSaved) || 0;
+  const debts = Number(totalDebt) || 0;
+  return { cash, savings, debts, cardsOwed, netWorth: realMoney + savings - debts };
 }
 
 // Split patrimonio: proporciones ahorro/deuda y patrimonio neto.
@@ -457,6 +487,14 @@ export function getCashShortfall(transactions, initialCashBalance, cards, paymen
 // ¿Se puede pagar? (efectivo + ahorros ≥ pago). totalSavings = Σ goal.currentAmount.
 export function canAffordPayment(available, totalSavings, paymentAmount) {
   return (Number(available) || 0) + (Number(totalSavings) || 0) >= (Number(paymentAmount) || 0);
+}
+
+// ¿Alguna tarjeta tiene estados de cuenta marcados como pagados con el sistema
+// anterior (`paidCycles`)? Esos pagos bajan la deuda pero nunca movieron el
+// efectivo (`getLiquidCash` solo resta `card.payments`); el efectivo inicial
+// declarado podría no reflejarlos. La UI lo avisa; el cálculo no cambia.
+export function hasLegacyPaidCycles(cards) {
+  return (cards || []).some((c) => Array.isArray(c.paidCycles) && c.paidCycles.length > 0);
 }
 
 // Dinero real de HOY = efectivo líquido − saldo pendiente de todas las tarjetas

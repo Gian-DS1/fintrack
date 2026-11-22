@@ -178,13 +178,21 @@ Criterios de UI (verificación manual + e2e Playwright en modo demo):
 | `dashboard.realMoneySavingsShort` | Ni con tu ahorro alcanza. | Not even your savings cover it. |
 | `dashboard.seeCards` | Ver tarjetas | See cards |
 | `dashboard.cardsWithoutCycle` | {n} tarjeta(s) sin día de corte: se resta todo su saldo. | {n} card(s) without a statement day: their full balance is subtracted. |
+| `dashboard.legacyPaidCycles` | Tienes estados de cuenta marcados como pagados con el sistema anterior. Comprueba que tu efectivo coincide con tu banco; si no, ajusta el efectivo inicial en Ajustes. | You have statements marked as paid with the previous system. Check that your cash matches your bank; if it does not, adjust your initial cash in Settings. |
+| `dashboard.legacyPaidCyclesLink` | Ir a Ajustes | Go to Settings |
+| `dashboard.legacyPaidCyclesDismiss` | Ya lo comprobé | Checked |
 
 - **Modo demo:** la tarjeta demo (`cc1`) acumula 6 meses de consumo **sin ningún abono**: la tarjeta arrastraría meses sin pagar, algo irreal. Se añaden al seed abonos por cada estado de cuenta ya vencido (el último, si aún no vence, queda pendiente y conserva el recordatorio). *Hallazgo al implementar:* el demo no saldría en estado crítico aun sin abonos (su efectivo es muy superior al consumo con tarjeta), así que los abonos sirven al realismo, no a evitar el estado crítico. `demoMode.test.js` fija que el demo no arranca crítico en varias fechas y que la tarjeta no arrastra ciclos sin pagar.
 
 ### 4.6 Riesgos (entrega 1)
 
-- **Dos cifras parecidas en la misma pantalla:** «Mi dinero total» (hero) y «Dinero real» usan reglas distintas (ahorro sí/no; facturado vs saldo total). Mitigación: rótulos e `InfoTip` explícitos, y la Pregunta abierta 7.
-- **Pagos legados en `paidCycles`:** reducen el saldo de la tarjeta, pero `getLiquidCash` solo resta `card.payments`. En cuentas migradas, el efectivo podría estar inflado por esos pagos antiguos. Es preexistente; conviene verificarlo con datos reales antes de culpar al nuevo número.
+- **Dos cifras parecidas en la misma pantalla:** «Mi dinero total» (hero) y «Dinero real» usaban reglas distintas (ahorro sí/no; facturado vs saldo total). Resuelto con la P7 (2026-11-22): ahora solo difieren en el ahorro.
+- **Pagos legados en `paidCycles`** (decidido el 2026-11-22, opción b: **no se cambia `getLiquidCash`**). Reducen el saldo de la tarjeta, pero `getLiquidCash` solo resta `card.payments`. Evidencia del historial de git:
+  - `b9675e1` (29-may-2026) creó el store de tarjetas con `markStatementPaid`, que escribía `paidCycles`.
+  - `f1a977d` (1-jun-2026) introdujo `card.payments` (`addCardPayment`); desde ahí ya no se escribe `paidCycles`. El flujo antiguo existió solo del 29-may al 1-jun y nunca movió el efectivo.
+  - `d4b4f6a` y `2e2c011` (14-jun-2026) crearon `getLiquidCash` y el efectivo real; `initial_cash_balance` nació el 15-jun.
+  - Como el saldo inicial se declaró después de esos pagos, lo más probable es que ya los incluya. Restarlos en `getLiquidCash` arriesga un **doble descuento**.
+  - En su lugar, el selector puro `hasLegacyPaidCycles(cards)` activa una nota en la celda «Dinero real» (es/en) que pide comprobar que el efectivo coincide con el banco y, si no, ajustar el efectivo inicial en Ajustes. El enlace lleva directo al campo (`/ajustes#efectivo-inicial`) y un botón «Ya lo comprobé» cierra la nota; el cierre se guarda en el dispositivo, por usuario (`legacyNoteStorage.js`), y se borra al cerrar sesión.
 - **Cashback escalonado** no descontado: el dinero real puede ser un poco más pesimista que el estado de cuenta real. Queda así por coherencia con la página de Tarjetas.
 - **Rendimiento:** `getCardBalances` recorre todas las transacciones por tarjeta. Una llamada por tarjeta y render memoizado es despreciable frente a `getWealthTimeline`, que ya lo hace por día.
 
@@ -455,9 +463,11 @@ El usuario aprobó la recomendación en las siete preguntas. Cada una conserva s
 - **Qué cambia:** marcarlas en la pantalla de proyección (guardado local) no toca el esquema. Añadir un campo `essential` a `categories` sí lo toca, pero serviría también al presupuesto.
 - **Recomendación:** elegir las categorías esenciales en la propia pantalla, guardado en el dispositivo. Al principio no hay ninguna marcada y se invita a elegirlas.
 
-### P7 · ¿Qué pasa con «Mi dinero total» del hero? (nueva)
+### P7 · ¿Qué pasa con «Mi dinero total» del hero? (nueva) — RESUELTA
 
 **Decisión (2026-11-20):** en la entrega 1 se deja como está. Un ticket aparte, con ADR en `docs/decisions/`, lo alineará después (hero y `PatrimonioSummary` restarían `totalBalance`).
+
+**Resuelta (2026-11-22):** el hero («Mi dinero total» = efectivo + ahorro − saldo pendiente completo de tarjetas, es decir dinero real + ahorro, también en cada punto de la serie) y «Mis finanzas» (patrimonio = efectivo + ahorro − préstamos − saldo pendiente de tarjetas) usan ya la misma definición de saldo. Registro: `docs/decisions/2026-11-22-mi-dinero-total-resta-tarjetas.md`.
 
 - **Qué decides:** si la cifra existente se alinea con el dinero real.
 - **Qué cambia:** hoy suma el ahorro y solo resta lo **facturado** pendiente, no el ciclo abierto. Puede verse sano mientras el dinero real es negativo. Además, «Mis finanzas» no resta tarjetas en absoluto.

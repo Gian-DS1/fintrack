@@ -1,5 +1,6 @@
-// Resumen de patrimonio: neto (efectivo + ahorro − deudas) + las 3 bolsas. Reusa
-// los selectores/stores existentes; cero lógica de cálculo nueva. Es el ancla de
+// Resumen de patrimonio: neto (efectivo + ahorro − deudas − saldo pendiente de
+// tarjetas) + las bolsas. Reusa los selectores/stores existentes; el cálculo vive
+// en getNetWorth. Es el ancla de
 // "Mis finanzas": los tabs de abajo muestran el DETALLE, no estos totales.
 import { useMemo } from 'react';
 import CountUp from '../../CountUp';
@@ -8,7 +9,7 @@ import useCreditCardStore from '../../../stores/useCreditCardStore';
 import useSavingsStore from '../../../stores/useSavingsStore';
 import useDebtStore from '../../../stores/useDebtStore';
 import usePrefsStore from '../../../stores/usePrefsStore';
-import { getLiquidCash } from '../dashboard/selectors';
+import { getNetWorth } from '../dashboard/selectors';
 import { useI18n } from '../../../contexts/I18nContext';
 import { formatCurrency } from '../../../utils/formatters';
 
@@ -22,15 +23,19 @@ export default function PatrimonioSummary() {
   const getTotalSaved = useSavingsStore((s) => s.getTotalSaved);
   const getTotalDebt = useDebtStore((s) => s.getTotalDebt);
 
-  const cash = useMemo(() => getLiquidCash(transactions, initialCashBalance, cards), [transactions, initialCashBalance, cards]);
   const savings = getTotalSaved();
   const debts = getTotalDebt();
-  const netWorth = cash + savings - debts;
+  const { cash, cardsOwed, netWorth } = useMemo(
+    () => getNetWorth(transactions, initialCashBalance, cards, savings, debts),
+    [transactions, initialCashBalance, cards, savings, debts],
+  );
 
   const bolsas = [
     { label: t('finances.cash'), value: cash, cls: 'text-on-surface' },
     { label: t('finances.savings'), value: savings, cls: 'text-secondary' },
     { label: t('finances.debts'), value: debts, cls: 'text-accent-error', sign: '−' },
+    // Solo si hay tarjetas con saldo: así el neto cuadra con lo que se ve.
+    ...(cardsOwed > 0 ? [{ label: t('finances.cardsOwed'), value: cardsOwed, cls: 'text-accent-error', sign: '−' }] : []),
   ];
 
   return (

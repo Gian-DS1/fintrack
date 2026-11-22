@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { supabase, getCurrentUser } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import useCreditCardStore from './useCreditCardStore';
-import { computeCashback } from '../utils/creditCards';
+import { computeCashback, isExpenseType } from '../utils/creditCards';
 import { getCurrency } from '../utils/currencyRuntime';
 import { tr } from '../i18n/runtime';
 import { isDemoActive } from '../stitch/demoFlag';
@@ -63,9 +63,12 @@ const useTransactionStore = create(
     let notes = transaction.notes || null;
 
     // Cashback se calcula sobre el monto ya en la moneda base y solo para gastos.
+    // Solo un gasto puede quedar ligado a una tarjeta: en un ingreso o un ahorro
+    // se descarta el `cardId` que haya dejado el formulario.
+    const cardId = isExpenseType(transaction.type) ? transaction.cardId || null : null;
     let cashbackEarned = 0;
-    if (transaction.cardId && earnsCashback(transaction.type)) {
-      const card = useCreditCardStore.getState().cards.find((c) => c.id === transaction.cardId);
+    if (cardId && earnsCashback(transaction.type)) {
+      const card = useCreditCardStore.getState().cards.find((c) => c.id === cardId);
       cashbackEarned = computeCashback(card, transaction.categoryId, amount);
     }
 
@@ -73,7 +76,7 @@ const useTransactionStore = create(
       const row = {
         id: localId(),
         categoryId: transaction.categoryId || '',
-        cardId: transaction.cardId || null,
+        cardId,
         amount,
         type: transaction.type,
         description: transaction.description || '',
@@ -91,7 +94,7 @@ const useTransactionStore = create(
     const dbTx = {
       user_id: user.id,
       category_id: transaction.categoryId || null,
-      card_id: transaction.cardId || null,
+      card_id: cardId,
       amount: amount,
       type: transaction.type,
       description: transaction.description,
@@ -142,7 +145,14 @@ const useTransactionStore = create(
     return true;
   },
 
-  updateTransaction: async (id, updates) => {
+  updateTransaction: async (id, rawUpdates) => {
+    // Si el movimiento queda como ingreso o ahorro, no puede conservar tarjeta,
+    // ni la que traiga `updates` ni la que ya tuviera guardada.
+    const current = get().transactions.find((t) => t.id === id);
+    const finalType = rawUpdates.type ?? current?.type;
+    const updates = finalType !== undefined && !isExpenseType(finalType) && (rawUpdates.cardId || current?.cardId)
+      ? { ...rawUpdates, cardId: null }
+      : rawUpdates;
     // Whitelist only real DB columns. The edit form carries extra fields
     // (id, createdAt, currency, isRecurring, ...) that would make Supabase
     // reject the update with an "unknown column" error.
@@ -313,13 +323,15 @@ const useTransactionStore = create(
     const cashbackFor = (t) => ((card && earnsCashback(t.type))
       ? computeCashback(card, t.categoryId, t.amount)
       : 0);
+    // Solo un gasto queda ligado a la tarjeta; un ingreso o un ahorro se queda sin ella.
+    const cardIdFor = (t) => (isExpenseType(t.type) ? dbCardId : null);
 
     const results = isDemoActive()
       ? transactionsToUpdate.map((t) => ({ id: t.id, error: null, cashback: cashbackFor(t) }))
       : await Promise.all(transactionsToUpdate.map((t) => {
         const cashback = cashbackFor(t);
         return supabase.from('transactions').update({
-          card_id: dbCardId,
+          card_id: cardIdFor(t),
           cashback_earned: cashback
         }).eq('id', t.id).then(({ error }) => ({ id: t.id, error, cashback }));
       }));
@@ -337,7 +349,7 @@ const useTransactionStore = create(
         if (ids.includes(t.id)) {
           const result = results.find(r => r.id === t.id);
           if (!result || result.error) return t;
-          return { ...t, cardId: dbCardId, cashbackEarned: result.cashback };
+          return { ...t, cardId: cardIdFor(t), cashbackEarned: result.cashback };
         }
         return t;
       }),
@@ -389,7 +401,7 @@ const useTransactionStore = create(
     // El monto ya viene en la moneda base; el cashback solo aplica a gastos con tarjeta.
     const cards = useCreditCardStore.getState().cards;
     const dbTxs = transactions.map(t => {
-      const cardId = t.cardId || null;
+      const cardId = isExpenseType(t.type) ? t.cardId || null : null;
       const card = cardId ? cards.find((c) => c.id === cardId) : null;
       const cashback = (card && earnsCashback(t.type))
         ? computeCashback(card, t.categoryId, t.amount)
