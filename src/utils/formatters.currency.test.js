@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { formatCurrency, formatCurrencyCompact } from './formatters';
+import { formatCurrency, formatCurrencyCompact, formatCurrencyWhole } from './formatters';
 import { setRuntimeCurrency } from './currencyRuntime';
 import { setRuntimeLanguage } from '../i18n/runtime';
 
@@ -35,5 +35,31 @@ describe('formatCurrency global', () => {
   it('moneda desconocida no explota (cae al código tal cual)', () => {
     setRuntimeCurrency('XXX');
     expect(() => formatCurrency(10)).not.toThrow();
+  });
+});
+
+describe('formatCurrencyWhole', () => {
+  beforeEach(() => { setRuntimeLanguage('es'); setRuntimeCurrency(null); });
+
+  it('redondea al entero y no muestra decimales', () => {
+    setRuntimeCurrency('USD');
+    expect(formatCurrencyWhole(1234.56)).toMatch(/^US\$\u00A01,235$/);
+    expect(formatCurrencyWhole(1234.4)).not.toMatch(/[.,]\d{2}$/);
+  });
+
+  it('negativos llevan signo y sin -0', () => {
+    setRuntimeCurrency('USD');
+    expect(formatCurrencyWhole(-1500)).toMatch(/^-US\$\u00A01,500$/);
+    expect(formatCurrencyWhole(-0.2)).not.toMatch(/-/);
+  });
+
+  it('respeta el idioma y la moneda explícita', () => {
+    setRuntimeLanguage('en');
+    expect(formatCurrencyWhole(10, 'EUR')).toMatch(/€/);
+  });
+
+  it('un valor no numérico se pinta como 0', () => {
+    setRuntimeCurrency('USD');
+    expect(formatCurrencyWhole(undefined)).toMatch(/\u00A00$/);
   });
 });

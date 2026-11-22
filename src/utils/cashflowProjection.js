@@ -10,7 +10,8 @@ import { advanceDate, nextMonthlyOccurrence } from './recurrence.js';
 import { getNextLoanDueDate } from './loanReminders.js';
 import { getCardBalances, getCardCycles, hasValidCardCycle } from './creditCards.js';
 import { toISODate } from './formatters.js';
-import { getLiquidCash, computeShortfall } from '../stitch/screens/dashboard/selectors.js';
+import { getEffectiveAmount } from './calculations.js';
+import { getLiquidCash, computeShortfall, getFirstDataMonth, getRealMoney } from '../stitch/screens/dashboard/selectors.js';
 
 // Guarda contra plantillas con fechas absurdas: una semanal a 45 días son 7 pasos.
 const MAX_STEPS = 400;
@@ -21,6 +22,7 @@ const MAX_HORIZON_DAYS = 45;
 // recurrentes → pagos de tarjeta. El pago se evalúa con lo demás del día aplicado.
 const KIND_ORDER = { income: 0, loan: 1, recurring_expense: 2, savings: 2, card_payment: 3 };
 const EXPENSE_TYPES = ['expense', 'fixed_expense', 'variable_expense'];
+const VARIABLE_TYPES = ['variable_expense', 'expense'];
 
 const roundCents = (n) => Math.round(n * 100) / 100 || 0;
 
@@ -190,5 +192,247 @@ export function getCashflowUntilCardDue({
     firstShortfall: events.find((e) => e.shortfall > 0) || null,
     skippedDebts,
     paymentsBeyondHorizon,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entrega 3 · Promedio mensual de gasto
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Mínimo de días con datos para extrapolar un único mes parcial a un mes entero.
+const MIN_PARTIAL_DAYS = 10;
+const monthIndexOf = (y, m0) => y * 12 + m0;
+
+/**
+ * Promedio mensual de gasto de los últimos `months` meses COMPLETOS (sin el mes de
+ * `refDate`), neto de cashback y con o sin tarjeta. Los meses anteriores al primer
+ * dato no cuentan como meses en cero: con menos historial usa los que hay. Si el mes
+ * del primer dato empezó después del día 1 es un mes parcial: se descarta cuando hay
+ * otro mes completo y, si es el único, se prorratea por los días con datos (con menos
+ * de 10 días no se extrapola: devuelve 0 meses). `prorateFirstMonth: false` usa ese mes
+ * tal cual (para pagos únicos al mes, como los fijos, que no se escalan por días).
+ * `categoryIds: null` = todas; un arreglo vacío = ninguna. `excludeTransactionIds` y
+ * `excludeCategoryIds` sacan transacciones concretas o categorías enteras del promedio.
+ * @returns {{ average: number, monthsUsed: number }}
+ */
+export function getAverageMonthlySpend(transactions, refDate, {
+  months = 3, types = ['variable_expense', 'expense'], categoryIds = null,
+  excludeTransactionIds = [], excludeCategoryIds = [], prorateFirstMonth = true,
+} = {}) {
+  const first = getFirstDataMonth(transactions);
+  if (!first) return { average: 0, monthsUsed: 0 };
+  const refIdx = monthIndexOf(refDate.getFullYear(), refDate.getMonth());
+  const firstIdx = monthIndexOf(first.y, first.m);
+  let startIdx = Math.max(firstIdx, refIdx - months);
+  if (startIdx >= refIdx) return { average: 0, monthsUsed: 0 };
+
+  // Día del primer dato: si es el mes de arranque y no empezó el día 1, es parcial.
+  let firstISO = '';
+  for (const t of transactions) if (t.date && (!firstISO || t.date < firstISO)) firstISO = t.date;
+  const firstDay = Number(firstISO.slice(8, 10));
+  let partialShare = 1;
+  if (startIdx === firstIdx && firstDay > 1) {
+    if (refIdx - startIdx > 1) {
+      startIdx += 1;
+    } else if (prorateFirstMonth) {
+      const daysInMonth = new Date(first.y, first.m + 1, 0).getDate();
+      const daysWithData = daysInMonth - firstDay + 1;
+      if (daysWithData < MIN_PARTIAL_DAYS) return { average: 0, monthsUsed: 0 };
+      partialShare = daysWithData / daysInMonth;
+    }
+  }
+  const monthsUsed = refIdx - startIdx;
+
+  const skipTx = new Set(excludeTransactionIds);
+  const skipCat = new Set(excludeCategoryIds);
+  let total = 0;
+  for (const t of transactions) {
+    if (!t.date || !types.includes(t.type)) continue;
+    if (skipTx.has(t.id) || skipCat.has(t.categoryId)) continue;
+    if (categoryIds && !categoryIds.includes(t.categoryId)) continue;
+    const idx = monthIndexOf(Number(t.date.slice(0, 4)), Number(t.date.slice(5, 7)) - 1);
+    if (idx < startIdx || idx >= refIdx) continue;
+    total += getEffectiveAmount(t);
+  }
+  return { average: roundCents(total / monthsUsed / partialShare), monthsUsed };
+}
+
+const MONTHLY_FACTOR = { weekly: 52 / 12, biweekly: 26 / 12 };
+
+/** Equivalente mensual de una plantilla recurrente: semanal × 52/12, quincenal × 26/12. */
+export function monthlyEquivalent(template) {
+  return (Number(template?.amount) || 0) * (MONTHLY_FACTOR[template?.frequency] ?? 1);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Entrega 3 · Proyección del dinero real a N meses
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEFAULT_CUT_PCT = 0.2;
+
+// Último día del mes `k` meses después del de `refDate`, y su primer día.
+function monthBounds(refDate, k) {
+  const first = new Date(refDate.getFullYear(), refDate.getMonth() + k, 1);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  return { first, firstISO: toISODate(first), lastISO: toISODate(last), daysInMonth: last.getDate() };
+}
+
+// Gasto variable «no programado» mensual que asume cada escenario (sin prorratear).
+// `average` y `scheduled` ya vienen netos entre sí (promedio − recurrentes variables).
+function scenarioVariableBase({ scenario, unscheduled, essentialUnscheduled, variableOverride, cutPct }) {
+  const manual = Number.isFinite(variableOverride) && variableOverride >= 0 ? variableOverride : null;
+  const current = manual ?? unscheduled;
+  if (scenario === 'essential') return essentialUnscheduled;
+  if (scenario === 'cuts') return roundCents(current * (1 - Math.min(1, Math.max(0, cutPct))));
+  return current;
+}
+
+/**
+ * Curva del dinero real a `months` meses: el punto 0 es el cierre del mes en curso
+ * (solo cuenta desde hoy: la parte ya pasada está en las transacciones) y los
+ * siguientes son meses completos, así que hay `months + 1` puntos. El dinero real
+ * parte de `getRealMoney` y cada mes suma ingresos recurrentes y resta gastos y
+ * ahorros recurrentes (con o sin tarjeta: en dinero real da igual el medio de
+ * pago), cuotas de préstamos, el gasto variable del escenario y los «fijos no
+ * programados» (promedio de fijos menos lo que ya cubren los recurrentes fijos).
+ * Los gastos de promedio (variable y fijos no programados) se prorratean en el mes
+ * en curso por los días que quedan, hoy incluido. Los intereses se ignoran.
+ * Solo lee sus parámetros: simular no toca ningún store.
+ *  - `scenario`: 'current' (promedio o corrección manual), 'essential' (promedio de
+ *    `essentialCategoryIds`) o 'cuts' (base × (1 − cutPct)).
+ *  - `excludedRecurringIds`: cancelaciones simuladas, válidas en todos los escenarios.
+ *  - `variableOverride`: corrección manual del gasto variable NO programado (el promedio
+ *    menos lo que ya cubren los recurrentes variables); no aplica a 'essential'.
+ *  - `includeFixedUnscheduled`: false pone los fijos no programados a 0 en la curva
+ *    (`base.fixedUnscheduled` conserva el importe para mostrarlo).
+ *  - `debtPaymentCategoryIds`: categorías de pagos de préstamo antiguos sin enlace.
+ * @returns {{ start: number,
+ *   base: { variable: number,            // lo que asume el escenario, al mes
+ *           average: number,             // promedio automático de variable
+ *           variableScheduled: number,   // ya cubierto por recurrentes variables
+ *           variableUnscheduled: number, // max(0, promedio − programado)
+ *           variableMonthsUsed: number, fixedUnscheduled: number },
+ *   points: Array<{ key: string, y: number, m: number, income: number, recurringOut: number,
+ *                   loanOut: number, variableOut: number, fixedOut: number, realMoney: number }>,
+ *   firstNegativeKey: string | null, minPoint: object, skippedDebts: string[],
+ *   hasRecurringIncome: boolean }}
+ */
+export function projectRealMoney({
+  transactions, initialCashBalance, cards, recurring, debts, debtPayments, currency, refDate,
+  months = 12, scenario = 'current', excludedRecurringIds = [], variableOverride = null,
+  essentialCategoryIds = [], cutPct = DEFAULT_CUT_PCT, debtPaymentCategoryIds = [], includeFixedUnscheduled = true,
+}) {
+  const todayISO = toISODate(refDate);
+  const txs = transactions || [];
+  const start = getRealMoney(txs, initialCashBalance, cards, refDate).realMoney;
+
+  // Los pagos de préstamo ya hechos son transacciones fixed_expense, pero su cuota
+  // futura ya se resta por separado (cuotas de préstamos): no deben alimentar los
+  // promedios. Se excluyen por el enlace del pago y, para pagos antiguos sin enlace,
+  // por las categorías que se pasan en `debtPaymentCategoryIds`.
+  const loanFilter = {
+    excludeTransactionIds: (debtPayments || []).map((p) => p?.transactionId).filter(Boolean),
+    excludeCategoryIds: debtPaymentCategoryIds,
+  };
+  const average = getAverageMonthlySpend(txs, refDate, loanFilter);
+  const essentialAverage = getAverageMonthlySpend(txs, refDate, { ...loanFilter, categoryIds: essentialCategoryIds }).average;
+
+  // Los recurrentes de gasto variable se materializan como transacciones y ya están
+  // dentro del promedio: se netean (todos, también los apagados en la simulación, para
+  // que apagar uno sí quite su monto). En «solo lo esencial», solo los de esas categorías.
+  const activeRecurring = (recurring || []).filter((t) => t?.active);
+  const scheduledVariable = (onlyCategoryIds) => roundCents(activeRecurring
+    .filter((t) => VARIABLE_TYPES.includes(t.type) && (!onlyCategoryIds || onlyCategoryIds.includes(t.categoryId)))
+    .reduce((sum, t) => sum + monthlyEquivalent(t), 0));
+  const variableScheduled = scheduledVariable(null);
+  const essentialScheduled = scheduledVariable(essentialCategoryIds);
+  const variableUnscheduled = roundCents(Math.max(0, average.average - variableScheduled));
+  const variable = scenarioVariableBase({
+    scenario,
+    unscheduled: variableUnscheduled,
+    essentialUnscheduled: roundCents(Math.max(0, essentialAverage - essentialScheduled)),
+    variableOverride, cutPct,
+  });
+
+  // Fijos no programados: se netea contra TODOS los recurrentes fijos activos,
+  // también los apagados en la simulación (apagar el alquiler no debe hacer
+  // reaparecer un alquiler «no programado»).
+  const scheduledFixed = activeRecurring
+    .filter((t) => t.type === 'fixed_expense')
+    .reduce((sum, t) => sum + monthlyEquivalent(t), 0);
+  const fixedAverage = getAverageMonthlySpend(txs, refDate, {
+    ...loanFilter, types: ['fixed_expense'], prorateFirstMonth: false,
+  }).average;
+  const fixedUnscheduled = roundCents(Math.max(0, fixedAverage - scheduledFixed));
+
+  const excluded = new Set(excludedRecurringIds);
+  const templates = activeRecurring.filter((t) => (
+    !excluded.has(t.id) && (Number(t.amount) || 0) > 0
+    && (t.type === 'income' || t.type === 'savings' || EXPENSE_TYPES.includes(t.type))
+  ));
+
+  // Cuotas de préstamos por mes ('YYYY-MM'). Mismo calendario que la lista de la
+  // entrega 2: primera fecha pendiente y las siguientes ancladas al día del préstamo.
+  const lastMonthISO = monthBounds(refDate, months).lastISO;
+  const loanByMonth = new Map();
+  const skippedDebts = [];
+  for (const debt of debts || []) {
+    if (!isScheduledLoan(debt)) continue;
+    if ((debt.currency || 'DOP') !== currency) { skippedDebts.push(debt.id); continue; }
+    const quota = Number(debt.monthlyPayment);
+    let remaining = Number(debt.currentBalance);
+    let dueISO = getNextLoanDueDate(debt, debtPayments, refDate);
+    for (let i = 0; i < MAX_STEPS && dueISO && dueISO <= lastMonthISO && remaining > 0; i++) {
+      const amount = Math.min(quota, remaining);
+      const key = dueISO.slice(0, 7);
+      loanByMonth.set(key, (loanByMonth.get(key) || 0) + amount);
+      remaining = roundCents(remaining - amount);
+      const [y, m] = dueISO.split('-').map(Number);
+      dueISO = nextMonthlyOccurrence(debt.due_date, new Date(y, m, 1));
+    }
+  }
+
+  const points = [];
+  let realMoney = start;
+  for (let k = 0; k <= months; k++) {
+    const { first, firstISO, lastISO, daysInMonth } = monthBounds(refDate, k);
+    const fromISO = k === 0 ? todayISO : firstISO;
+    const share = k === 0 ? (daysInMonth - refDate.getDate() + 1) / daysInMonth : 1;
+
+    let income = 0;
+    let recurringOut = 0;
+    for (const t of templates) {
+      const total = (Number(t.amount) || 0) * expandRecurring(t, fromISO, lastISO).length;
+      if (t.type === 'income') income += total;
+      else recurringOut += total;
+    }
+    const key = firstISO.slice(0, 7);
+    const loanOut = loanByMonth.get(key) || 0;
+    const variableOut = roundCents(variable * share);
+    const fixedOut = includeFixedUnscheduled ? roundCents(fixedUnscheduled * share) : 0;
+
+    realMoney = roundCents(realMoney + income - recurringOut - loanOut - variableOut - fixedOut);
+    points.push({
+      key, y: first.getFullYear(), m: first.getMonth(),
+      income: roundCents(income), recurringOut: roundCents(recurringOut),
+      loanOut: roundCents(loanOut), variableOut, fixedOut, realMoney,
+    });
+  }
+
+  return {
+    start,
+    base: {
+      variable,
+      average: average.average,
+      variableScheduled,
+      variableUnscheduled,
+      variableMonthsUsed: average.monthsUsed,
+      fixedUnscheduled,
+    },
+    points,
+    firstNegativeKey: points.find((p) => p.realMoney < 0)?.key ?? null,
+    minPoint: points.reduce((min, p) => (p.realMoney < min.realMoney ? p : min), points[0]),
+    skippedDebts,
+    hasRecurringIncome: activeRecurring.some((t) => t.type === 'income'),
   };
 }

@@ -5,6 +5,7 @@
 // (signOut manual, expiración de token, cierre desde otra pestaña), no solo
 // en el botón de salir: si queda dato residual, otra persona que inicie
 // sesión en la misma pestaña vería las finanzas del usuario anterior.
+// También borra la simulación de «Proyección», guardada en localStorage.
 //
 // Se invoca desde AuthContext en el evento SIGNED_OUT de Supabase, que cubre
 // todos los caminos anteriores.
@@ -18,6 +19,7 @@ import useDebtStore from './useDebtStore';
 import useCreditCardStore from './useCreditCardStore';
 import useRecurringStore from './useRecurringStore';
 import usePrefsStore from './usePrefsStore';
+import { clearSimulations } from '../stitch/screens/projection/simulationStorage';
 
 const RESETS = [
   [useTransactionStore, { transactions: [] }],
@@ -36,4 +38,6 @@ export function clearUserData() {
     store.setState(initial);
     store.persist.clearStorage();
   }
+  // La simulación de «Proyección» vive en localStorage (por usuario): no sobrevive al fin de sesión.
+  clearSimulations();
 }

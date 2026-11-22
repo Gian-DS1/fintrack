@@ -13,9 +13,11 @@ import useSavingsStore from '../stores/useSavingsStore';
 import useDebtStore from '../stores/useDebtStore';
 import useCreditCardStore from '../stores/useCreditCardStore';
 import usePrefsStore from '../stores/usePrefsStore';
+import useRecurringStore from '../stores/useRecurringStore';
 import { defaultCategories } from '../data/defaultCategories';
 import { setRuntimeCurrency } from '../utils/currencyRuntime';
 import { getCardCycles } from '../utils/creditCards';
+import { clearSimulations } from './screens/projection/simulationStorage';
 import { isLocalhost, setDemoFlag, setFreshFlag, clearDemoFlags } from './demoFlag';
 
 // La detección del modo vive en demoFlag.js, que no importa nada del proyecto:
@@ -25,6 +27,8 @@ export { isLocalhost, isDemoActive, isFreshActive } from './demoFlag';
 
 export function exitDemo() {
   clearDemoFlags();
+  // La simulación de «Proyección» del demo (usuario 'demo') no se queda en el dispositivo.
+  clearSimulations();
 }
 
 // ── Datos de ejemplo (en memoria) ───────────────────────────────────────────
@@ -215,6 +219,24 @@ const debts = [
   { id: 'd2', creditorName: 'Tarjeta departamental', originalAmount: 45000, currentBalance: 18000, interestRate: 6.0, monthlyPayment: 3000, due_date: dayOf(25), status: 'active', currency: 'DOP', createdAt: '' },
 ];
 
+// Recurrentes del demo: los que alimentan la proyección a 12 meses (sin ellos la
+// pantalla avisaría de que no hay ingresos). Reflejan las filas fijas que ya genera
+// el historial (salario y alquiler/internet), así que no duplican gasto: la parte
+// de «fijos no programados» solo recoge lo que NO está como recurrente. Siempre con
+// la próxima fecha DESPUÉS de hoy: la ocurrencia de hoy ya está en el historial
+// sembrado (como la dejaría materializeDue) y no debe contarse otra vez.
+const nextDayOf = (n) => iso(new Date(yearIdx, monthIdx + (today.getDate() >= n ? 1 : 0), n));
+const demoRecurring = (id, catName, type, amount, description, day) => ({
+  id, categoryId: catId(catName), cardId: null, amount, type, description, notes: null,
+  currency: 'DOP', frequency: 'monthly', nextDate: nextDayOf(day), active: true, createdAt: '',
+});
+const recurring = [
+  demoRecurring('r1', 'Salario', 'income', 85000, 'Salario (día 1)', 1),
+  demoRecurring('r2', 'Salario', 'income', 85000, 'Salario (día 15)', 15),
+  demoRecurring('r3', 'Alquiler', 'fixed_expense', 32000, 'Alquiler mensual', 2),
+  demoRecurring('r4', 'Internet', 'fixed_expense', 1200, 'Internet residencial', 5),
+];
+
 // Abonos de la tarjeta demo: el estado de cuenta de cada corte ya cerrado se paga
 // completo (neto de cashback) en su fecha de pago. Sin ellos la tarjeta
 // arrastraría 6 meses de consumo sin pagar, algo que ningún usuario real tiene. Si
@@ -258,6 +280,7 @@ export function seedDemoStores() {
   useSavingsStore.setState({ goals, contributions: [], loading: false });
   useDebtStore.setState({ debts, payments: [], loading: false });
   useCreditCardStore.setState({ cards, loading: false });
+  useRecurringStore.setState({ recurring });
   usePrefsStore.setState({ currency: 'DOP', initialCashBalance: 75000 });
   setRuntimeCurrency('DOP');
 }
@@ -282,6 +305,7 @@ export function seedFreshStores() {
   useSavingsStore.setState({ goals: [], contributions: [], loading: false });
   useDebtStore.setState({ debts: [], payments: [], loading: false });
   useCreditCardStore.setState({ cards: [], loading: false });
+  useRecurringStore.setState({ recurring: [] });
   usePrefsStore.setState({ currency: null, tutorialSeen: false, budgetLevel: 'tracking', prefsLoaded: false, initialCashBalance: 0 });
   setRuntimeCurrency(null);
 }
