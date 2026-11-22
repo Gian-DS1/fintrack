@@ -1,7 +1,7 @@
 # Dinero real y proyección de flujo de caja
 
 **Fecha:** 2026-11-20
-**Estado:** Preguntas abiertas decididas el 2026-11-20. Entrega 1 implementada; entregas 2 y 3 pendientes.
+**Estado:** Preguntas abiertas decididas el 2026-11-20. Entregas 1 y 2 implementadas; entrega 3 pendiente.
 **Rama:** `feat/dinero-real-proyeccion`
 **Tickets:** `.scratch/dinero-real-proyeccion/` (fuera del repo a propósito: `.scratch/` está en `.gitignore`)
 **Glosario:** `GLOSSARY.md` (términos de esta feature)
@@ -211,13 +211,16 @@ Criterios de UI (verificación manual + e2e Playwright en modo demo):
 - **Pago de cada tarjeta** (supuesto: se paga el saldo completo, nunca el mínimo):
   - Estado cerrado sin pagar y con fecha de pago ≥ hoy → pago en `cycles.dueDateISO` por `pendingBilled`.
   - Estado cerrado sin pagar y fecha de pago ya pasada (vencido) → pago **hoy**, marcado `overdue`.
-  - Estado cerrado ya pagado → pago en la fecha de pago del ciclo abierto por `openCycle` + cargos recurrentes previstos con esa tarjeta hasta el próximo corte («monto del ciclo cerrado + compras hasta el corte»).
+  - Estado cerrado ya pagado → pago en la fecha de pago del ciclo abierto por `openCycle` + cargos recurrentes previstos con esa tarjeta hasta el próximo corte («monto del ciclo cerrado + compras hasta el corte»). Si no hay nada que pagar (ciclo abierto en 0 y sin cargos recurrentes), la tarjeta no genera pago.
+  - Con el estado cerrado **sin pagar**, los cargos recurrentes con tarjeta caen en el ciclo abierto (posterior al corte ya pasado), así que **no** engordan ese pago.
+  - Tarjeta **sin ciclo válido**: no hay fecha de pago, así que no genera pago previsto (sí entra en el dinero real).
+  - Un pago que cae después del tope de 45 días queda fuera de la lista y no cuenta para el faltante.
 - **Recurrentes** (`useRecurringStore`, solo `active`): se expanden ocurrencias desde `nextDate` con `advanceDate` hasta el horizonte (una semanal genera varias). Las ocurrencias < hoy se ignoran porque `materializeDue` las convierte en transacciones al cargar.
   - `income` suma.
   - Gasto **sin** `cardId` resta.
   - Gasto **con** `cardId` no mueve efectivo: se suma al pago de su tarjeta si cae antes de ese corte.
   - `savings` resta.
-- **Préstamos** (`useDebtStore`, `status === 'active'`, con `due_date` y `monthlyPayment > 0`): primera fecha con `getNextLoanDueDate(debt, payments, hoy)` y siguientes con `advanceDate(…, 'monthly')` dentro del horizonte. Se omiten los préstamos con `currency` ≠ moneda del perfil y se avisa con una nota.
+- **Préstamos** (`useDebtStore`, `status === 'active'`, con `due_date` y `monthlyPayment > 0`): primera fecha con `getNextLoanDueDate(debt, payments, hoy)` y las siguientes con `nextMonthlyOccurrence(debt.due_date, día siguiente)` dentro del horizonte. Se ancla al día del préstamo y no se usa `advanceDate` sobre la fecha anterior: así un préstamo del día 31 no se arrastra al 28 después de febrero. La suma de cuotas se topa por `currentBalance`: la última se reduce al saldo que queda y no hay más después. Se omiten los préstamos con `currency` ≠ moneda del perfil y se avisa con una nota.
 - **Orden dentro del mismo día:** ingresos → préstamos → gastos recurrentes → pagos de tarjeta. Así el pago de la tarjeta se evalúa con todo lo demás del día ya aplicado.
 - **Faltante:** para cada pago de tarjeta, `max(0, monto − saldo antes del pago)`.
 
@@ -276,6 +279,11 @@ export function getCashflowUntilCardDue({ transactions, initialCashBalance, card
 ### 5.5 Riesgos
 
 - Ingresos **no** registrados como recurrentes no aparecen: la lista puede ser pesimista. Hay que decirlo en el pie: «Solo incluye movimientos programados».
+- `cashflowProjection.js` (en `src/utils`) importa `getLiquidCash` y `computeShortfall` de `dashboard/selectors.js`, como fija §5.3: es la única dependencia de `utils` hacia `stitch`. Si se mueve el efectivo a `utils`, el import se invierte sin más cambios.
+- **Límite conocido (a) · doble conteo transitorio de la ocurrencia de hoy:** `materializeDue` crea las transacciones y solo después avanza `nextDate` (en Supabase y luego en el estado). Mientras espera a Supabase, la ocurrencia de hoy ya está en las transacciones y la plantilla todavía dice «hoy», así que la lista la cuenta dos veces. Se corrige sola al avanzar `nextDate`; no se arregla en esta entrega.
+- **Límite conocido (b) · día de corte con un recurrente de tarjeta sin materializar:** si hoy es día de corte y la ocurrencia de hoy de un gasto recurrente con tarjeta aún no se materializó, se suma al pago del estado siguiente. Una vez materializada, esa compra (con fecha de hoy) cae en el estado que cierra hoy. No se arregla en esta entrega.
+- Un pago de tarjeta que cae después del tope de 45 días no entra en la lista; la UI lo avisa («N pago(s) de tarjeta caen fuera de este plazo») y no afirma que alcanza para todas las tarjetas.
+- Los cargos recurrentes con tarjeta se suman por su monto bruto, sin cashback (los recurrentes no guardan cashback): el pago previsto puede ser algo más pesimista.
 - `getUpcoming` (calendario) ya lista vencimientos con otra regla (una ocurrencia por recurrente y `pendingBilled`). No se fusionan ahora para no tocar el calendario. Se anota como deuda técnica.
 
 ---

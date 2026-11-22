@@ -1,6 +1,7 @@
 // Celda «Dinero real» del Resumen: efectivo − saldo pendiente de todas las
 // tarjetas, siempre con la fecha de hoy. Solo presentación: recibe el resultado
-// de getRealMoney y el ahorro total; no calcula ni lee stores.
+// de getRealMoney, el ahorro total y la lista de movimientos previstos
+// (getCashflowUntilCardDue); no calcula ni lee stores.
 // El estado crítico (dinero real < 0) se comunica con icono + texto, no solo con
 // color, y sin aria-live: el valor no cambia en vivo.
 import { Link } from 'react-router-dom';
@@ -10,12 +11,13 @@ import { InfoTip } from '../../InfoTip';
 import { useI18n } from '../../../contexts/I18nContext';
 import { formatCurrency } from '../../../utils/formatters';
 import { BentoCell } from './dashboardUi';
+import CashflowUntilDue from './CashflowUntilDue';
 import { canAffordPayment } from './selectors';
 
 const fmt = (n) => formatCurrency(n);
 const CARDS_PATH = '/mis-finanzas?tab=cards';
 
-export default function RealMoneyCard({ data, totalSavings }) {
+export default function RealMoneyCard({ data, totalSavings, cashflow }) {
   const { t } = useI18n();
   const { cash, cardsOwed, realMoney, isCritical, shortfall, cards, cardsWithoutCycle } = data;
   const hasCards = cards.length > 0;
@@ -70,6 +72,8 @@ export default function RealMoneyCard({ data, totalSavings }) {
           {t('dashboard.seeCards')}
         </Link>
       )}
+
+      <CashflowUntilDue cashflow={cashflow} />
     </BentoCell>
   );
 }

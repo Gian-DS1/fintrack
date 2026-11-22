@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getNetWorthSplit, getLiquidCash, getLiquidDelta, getFirstDataMonth, getCumulativeLiquidWealth, getWealthTimeline, pickHeadPoint, getCashShortfall, canAffordPayment, getCardReminders, getHeroMetric, getWealthYDomain, getRealMoney } from './selectors';
+import { getCategoryBreakdown, getBudgetUsage, getBudgetPace, getNetWorthSplit, getLiquidCash, getLiquidDelta, getFirstDataMonth, getCumulativeLiquidWealth, getWealthTimeline, pickHeadPoint, getCashShortfall, canAffordPayment, getCardReminders, getHeroMetric, getWealthYDomain, getRealMoney, computeShortfall } from './selectors';
 import { getCardBalances } from '../../../utils/creditCards';
 
 const cats = [
@@ -591,6 +591,31 @@ describe('getCashShortfall', () => {
     const r = getCashShortfall(txs, 5000, [], 7000);
     expect(r.available).toBe(6000);
     expect(r.shortfall).toBe(1000);
+  });
+});
+
+describe('computeShortfall', () => {
+  it('monto 0 → sin faltante', () => {
+    expect(computeShortfall(5000, 0)).toEqual({ available: 5000, shortfall: 0 });
+  });
+
+  it('monto menor que lo disponible → sin faltante', () => {
+    expect(computeShortfall(5000, 3000)).toEqual({ available: 5000, shortfall: 0 });
+  });
+
+  it('monto mayor que lo disponible → faltante = diferencia', () => {
+    expect(computeShortfall(5000, 8000)).toEqual({ available: 5000, shortfall: 3000 });
+  });
+
+  it('disponible negativo → el faltante incluye el hueco', () => {
+    expect(computeShortfall(-2000, 3000)).toEqual({ available: -2000, shortfall: 5000 });
+  });
+
+  it('entradas no numéricas se tratan como 0 en el monto y se conserva el disponible dado', () => {
+    expect(computeShortfall(5000, undefined)).toEqual({ available: 5000, shortfall: 0 });
+    expect(computeShortfall(5000, 'abc')).toEqual({ available: 5000, shortfall: 0 });
+    expect(computeShortfall(undefined, 3000)).toEqual({ available: 0, shortfall: 3000 });
+    expect(computeShortfall(NaN, 3000)).toEqual({ available: 0, shortfall: 3000 });
   });
 });
 
