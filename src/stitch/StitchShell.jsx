@@ -108,6 +108,7 @@ function ShellInner() {
     { to: '/presupuesto', icon: 'account_balance', label: t('nav.budget') },
     { section: t('nav.section.assets') },
     { to: '/mis-finanzas', icon: 'account_balance_wallet', label: t('nav.finances') },
+    { to: '/proyeccion', icon: 'insights', label: t('nav.projection') },
     { section: t('nav.section.tools') },
     { to: '/calendario', icon: 'calendar_month', label: t('nav.calendar') },
     { to: '/categorias', icon: 'sell', label: t('nav.categories') },

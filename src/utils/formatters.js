@@ -7,12 +7,22 @@ import { getCurrency } from './currencyRuntime.js';
 // funciones corren por cada celda del Ledger y punto de chart en cada render.
 const symbolCache = new Map();    // `${code}|${locale}` → símbolo
 const amountFmtCache = new Map(); // locale → Intl.NumberFormat (2 decimales)
+const wholeFmtCache = new Map();  // locale → Intl.NumberFormat (sin decimales)
 
 function amountFormatter(locale) {
   let fmt = amountFmtCache.get(locale);
   if (!fmt) {
     fmt = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     amountFmtCache.set(locale, fmt);
+  }
+  return fmt;
+}
+
+function wholeFormatter(locale) {
+  let fmt = wholeFmtCache.get(locale);
+  if (!fmt) {
+    fmt = new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    wholeFmtCache.set(locale, fmt);
   }
   return fmt;
 }
@@ -65,6 +75,18 @@ export function formatCurrency(amount, currencyCode) {
   // Espacio irrompible: "RD$ 1,094,025.00" no debe partirse entre símbolo y
   // cifra al envolver línea (en móvil el monto quedaba debajo del "RD$").
   return `${sign}${currencySymbol(code, locale)}\u00A0${formatted}`;
+}
+
+/**
+ * Como formatCurrency pero redondeado al entero y sin decimales: para estimaciones
+ * (p. ej. la proyección), donde los centavos darían una falsa precisión.
+ */
+export function formatCurrencyWhole(amount, currencyCode) {
+  const rounded = Math.round(safeNumber(amount));
+  const code = currencyCode || getCurrency();
+  const locale = currentLocale();
+  const sign = rounded < 0 ? '-' : '';
+  return `${sign}${currencySymbol(code, locale)}\u00A0${wholeFormatter(locale).format(Math.abs(rounded))}`;
 }
 
 // Número compacto sin símbolo (1.5K, 2.3M, 4.1B). Base de los formatos de abajo.

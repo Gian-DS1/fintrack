@@ -22,6 +22,7 @@ const StitchLedger = lazy(() => import('./screens/StitchLedger'));
 const StitchBudget = lazy(() => import('./screens/StitchBudget'));
 const StitchFinances = lazy(() => import('./screens/StitchFinances'));
 const StitchCalendar = lazy(() => import('./screens/StitchCalendar'));
+const StitchProjection = lazy(() => import('./screens/StitchProjection'));
 const StitchSettings = lazy(() => import('./screens/StitchSettings'));
 const StitchFeedback = lazy(() => import('./screens/StitchFeedback'));
 const StitchCategories = lazy(() => import('./screens/StitchCategories'));
@@ -161,6 +162,7 @@ function AuthGate() {
           <Route path="ahorros" element={<Navigate to="/mis-finanzas?tab=vaults" replace />} />
           <Route path="deudas" element={<Navigate to="/mis-finanzas?tab=debts" replace />} />
           <Route path="tarjetas" element={<Navigate to="/mis-finanzas?tab=cards" replace />} />
+          <Route path="proyeccion" element={<StitchProjection />} />
           <Route path="calendario" element={<StitchCalendar />} />
           <Route path="categorias" element={<StitchCategories />} />
           <Route path="ajustes" element={<StitchSettings />} />

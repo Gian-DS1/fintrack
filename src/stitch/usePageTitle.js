@@ -10,6 +10,7 @@ const ROUTE_KEYS = {
   '/transacciones': 'nav.transactions',
   '/presupuesto': 'nav.budget',
   '/mis-finanzas': 'nav.finances',
+  '/proyeccion': 'nav.projection',
   '/calendario': 'nav.calendar',
   '/categorias': 'nav.categories',
   '/ajustes': 'nav.settings',

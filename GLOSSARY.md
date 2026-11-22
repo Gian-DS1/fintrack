@@ -53,7 +53,7 @@ Juego de supuestos de la proyección: «como vas», «solo lo esencial» o «con
 _Evitar_: plan, modo
 
 **Gasto variable base**:
-Gasto variable mensual que asume la proyección: el promedio de los últimos 3 meses completos o una corrección manual.
+Gasto variable mensual **no programado** que asume la proyección: el promedio de los últimos 3 meses completos menos lo que ya cubren los recurrentes variables, o una corrección manual.
 _Evitar_: promedio de gasto, gasto estimado
 
 **Ingreso restringido**:

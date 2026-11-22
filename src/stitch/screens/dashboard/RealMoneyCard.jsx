@@ -16,6 +16,7 @@ import { canAffordPayment } from './selectors';
 
 const fmt = (n) => formatCurrency(n);
 const CARDS_PATH = '/mis-finanzas?tab=cards';
+const PROJECTION_PATH = '/proyeccion';
 
 export default function RealMoneyCard({ data, totalSavings, cashflow }) {
   const { t } = useI18n();
@@ -67,11 +68,17 @@ export default function RealMoneyCard({ data, totalSavings, cashflow }) {
         </p>
       )}
 
-      {(isCritical || cardsWithoutCycle > 0) && (
-        <Link to={CARDS_PATH} className="mt-sm self-start font-mono-data text-mono-data text-primary hover:underline">
-          {t('dashboard.seeCards')}
+      <div className="mt-sm flex flex-wrap gap-x-lg gap-y-xs">
+        {(isCritical || cardsWithoutCycle > 0) && (
+          <Link to={CARDS_PATH} className="font-mono-data text-mono-data text-primary hover:underline">
+            {t('dashboard.seeCards')}
+          </Link>
+        )}
+        <Link to={PROJECTION_PATH} className="inline-flex items-center gap-[3px] font-mono-data text-mono-data text-primary hover:underline">
+          {t('dashboard.seeProjection')}
+          <MS name="arrow_forward" className="!text-[14px]" />
         </Link>
-      )}
+      </div>
 
       <CashflowUntilDue cashflow={cashflow} />
     </BentoCell>

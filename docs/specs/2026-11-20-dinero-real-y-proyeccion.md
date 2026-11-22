@@ -1,7 +1,7 @@
 # Dinero real y proyección de flujo de caja
 
 **Fecha:** 2026-11-20
-**Estado:** Preguntas abiertas decididas el 2026-11-20. Entregas 1 y 2 implementadas; entrega 3 pendiente.
+**Estado:** Preguntas abiertas decididas el 2026-11-20. Entregas 1, 2 y 3 implementadas.
 **Rama:** `feat/dinero-real-proyeccion`
 **Tickets:** `.scratch/dinero-real-proyeccion/` (fuera del repo a propósito: `.scratch/` está en `.gitignore`)
 **Glosario:** `GLOSSARY.md` (términos de esta feature)
@@ -47,7 +47,7 @@
 | **Dinero real** | Efectivo líquido − Σ saldo pendiente de todas las tarjetas. No incluye ahorro ni préstamos. | nuevo |
 | **Faltante** | Lo que falta para cubrir un pago con el efectivo disponible en ese momento: `max(0, monto − disponible)`. En la entrega 1, faltante = `max(0, −dinero real)`. | `getCashShortfall` (existe; ver §5.3) |
 | **Pago completo de tarjeta** | Pago previsto en la fecha de pago de una tarjeta por el saldo del estado de cuenta correspondiente. | nuevo (entrega 2) |
-| **Gasto variable base** | Gasto variable mensual que la proyección asume: el promedio de 3 meses completos o un valor manual. | nuevo (entrega 3) |
+| **Gasto variable base** | Gasto variable mensual **no programado** que la proyección asume: el promedio de 3 meses completos menos lo que ya cubren los recurrentes variables, o un valor manual. | nuevo (entrega 3) |
 | **Escenario** | Juego de supuestos de la proyección: «como vas», «solo lo esencial», «con recortes». | nuevo (entrega 3) |
 
 ---
@@ -294,29 +294,34 @@ export function getCashflowUntilCardDue({ transactions, initialCashBalance, card
 
 - Ruta nueva `/proyeccion`, entrada en la navegación (icono `insights`) y enlace «Ver proyección» desde la celda «Dinero real».
 - Cabecera fija: **«Simulación: nada de lo que cambies aquí modifica tus datos.»**
-- Curva del **dinero real** al cierre de cada mes, desde hoy hasta 12 meses. Línea en 0 de referencia. Estilo visual de `WealthTrendChart` (Recharts, `chartTokens.js`).
+- Curva del **dinero real** al cierre de cada mes, desde hoy hasta 12 meses: el punto «Hoy» más 13 cierres de mes (el mes en curso, parcial, y 12 meses completos). Alternativa en tabla (disclosure) para lectores de pantalla. Línea en 0 de referencia. Estilo visual de `WealthTrendChart` (Recharts, `chartTokens.js`).
 - Selector segmentado de escenario: **Como vas** · **Solo lo esencial** · **Con recortes**.
 - Si la curva cruza 0, un marcador y un texto: «En {mes} tu dinero real pasa a negativo». Si no cruza: «En 12 meses tendrías RD$X».
 - Panel «Simular cancelaciones»: lista de recurrentes de gasto activos con su equivalente mensual y un interruptor. Al apagarlo se recalcula la curva y se muestra «+RD$X/mes».
-- «Gasto variable base»: muestra el promedio y los meses usados («promedio de 3 meses: RD$X»), con campo para corregirlo a mano y «restablecer».
-- El estado de la simulación (interruptores, corrección manual, % de recorte, categorías esenciales) se guarda solo en `localStorage` del dispositivo, con `try/catch`.
+- «Gasto variable no programado»: muestra el promedio y los meses usados («promedio de 3 meses: RD$X»), cuánto ya está programado en recurrentes y cuánto no, con campo para corregirlo a mano y «restablecer».
+- El estado de la simulación (interruptores, corrección manual, % de recorte, categorías esenciales) se guarda solo en `localStorage` del dispositivo, con `try/catch`. La clave va versionada y es por usuario (`fintrack-projection-simulation:v1:<userId>`; en demo, `demo`) y se borra al cerrar sesión (`clearUserData`) y al salir del demo.
 
 ### 6.2 Reglas de cálculo
 
-- **Punto 0:** dinero real de hoy (`getRealMoney`).
+- **Punto de partida:** dinero real de hoy (`getRealMoney`). La curva tiene `months + 1` puntos: el cierre del mes en curso (solo cuenta desde hoy, hoy incluido) y `months` meses completos.
 - **Por mes `k`** (el mes en curso cuenta solo desde hoy):
   - `+` ingresos recurrentes del mes (ocurrencias con `expandRecurring`).
   - `−` gastos recurrentes del mes, **con o sin tarjeta**: en dinero real da igual el medio de pago, ese es el punto de esta métrica.
   - `−` recurrentes `savings`.
   - `−` cuotas de préstamos activos, hasta agotar `currentBalance` (número de cuotas = `ceil(currentBalance / monthlyPayment)`; intereses ignorados, se documenta).
-  - `−` gasto variable base del escenario (en el mes en curso, prorrateado por los días que quedan).
-  - `−` **fijos no programados** = `max(0, promedio de 3 meses de fixed_expense − equivalente mensual de los recurrentes fixed_expense activos)`. Así un alquiler no registrado como recurrente no desaparece de la proyección.
-- **Gasto variable base** (`getAverageVariableSpend`): promedio de los últimos 3 meses **completos** (sin el mes en curso) de `variable_expense` y `expense` (legado), netos de cashback (`getEffectiveAmount`), con o sin tarjeta. Si hay menos de 3 meses completos, usa los disponibles. Con 0 meses devuelve `average: 0`, `monthsUsed: 0`, y la UI pide un valor manual.
+  - `−` gasto variable base del escenario (en el mes en curso, prorrateado por los días que quedan, hoy incluido: `(díasDelMes − día + 1) / díasDelMes`).
+  - `−` **fijos no programados** = `max(0, promedio de 3 meses de fixed_expense − equivalente mensual de los recurrentes fixed_expense activos)`. Así un alquiler no registrado como recurrente no desaparece de la proyección. Se netea contra **todos** los fijos recurrentes activos, también los apagados en la simulación (apagar el alquiler no debe hacer reaparecer un alquiler «no programado»). Igual que el variable, se prorratea en el mes en curso. Aplica a los tres escenarios.
+- **Gasto variable base** (`getAverageMonthlySpend`): promedio de los últimos 3 meses **completos** (sin el mes en curso) de `variable_expense` y `expense` (legado), netos de cashback (`getEffectiveAmount`), con o sin tarjeta. Si hay menos de 3 meses completos, usa los disponibles. Con 0 meses devuelve `average: 0`, `monthsUsed: 0`, y la UI pide un valor manual.
+  - **Primer mes parcial:** si el primer dato cae después del día 1 de su mes, ese mes es parcial: se descarta si hay otro mes completo y, si es el único, se prorratea por los días con datos (`días del mes / días con datos`). Con menos de 10 días con datos no se extrapola: devuelve `monthsUsed: 0` y la pantalla pide el valor a mano. Los **fijos** no se prorratean nunca (son pagos únicos al mes: un alquiler pagado el día 20 sigue siendo un alquiler, no 1.5): usan el mes parcial tal cual.
+  - **Pagos de préstamo ya hechos:** `addPayment` crea una transacción `fixed_expense` (categoría `pago-deuda`). Esas transacciones se excluyen de los promedios (por su `transactionId` enlazado en `debtPayments` y, para pagos antiguos sin enlace, por las categorías de `debtPaymentCategoryIds`, que la pantalla rellena solo si hay deudas registradas, con el mismo criterio que Deudas y Presupuesto: slug `pago-deuda` y respaldo por nombre), porque la cuota que falta ya se resta aparte con las cuotas de préstamos.
+  - **Recurrentes variables:** se materializan como transacciones y ya están en el promedio. El gasto variable **no programado** es `max(0, promedio − Σ equivalente mensual de los recurrentes variable_expense/expense activos)`, neteado contra todos (también los apagados en la simulación, para que apagar uno sí quite su monto). En «Solo lo esencial» se netean solo los de las categorías marcadas. La corrección manual reemplaza este valor no programado.
 - **Escenarios:**
   - **Como vas:** base = promedio (o la corrección manual).
   - **Solo lo esencial:** base = promedio solo de las categorías marcadas como esenciales (ver Pregunta 6).
   - **Con recortes:** base × (1 − recorte). El recorte se elige entre 10 % y 50 %; por defecto 20 %.
-- **Cancelaciones simuladas:** los ids de recurrentes apagados se excluyen en **todos** los escenarios.
+- **Cancelaciones simuladas:** los ids de recurrentes apagados se excluyen en **todos** los escenarios. Pueden ser de gasto, ahorro **o ingreso** (parche manual para ingresos restringidos, P3). Interruptor encendido = el recurrente sigue en la proyección.
+- **Corrección manual** (`variableOverride`): reemplaza el gasto variable no programado en «Como vas» y «Con recortes» (el recorte se aplica sobre ella); no afecta a «Solo lo esencial». Un 0 es un valor válido.
+- **Préstamos:** las cuotas siguen el mismo calendario que la entrega 2 (`getNextLoanDueDate` y días anclados), con la última cuota reducida al saldo; los préstamos en otra moneda se omiten y se avisa.
 - **Equivalente mensual:** semanal × 52/12, quincenal × 26/12, mensual × 1.
 
 ### 6.3 Funciones puras propuestas (`src/utils/cashflowProjection.js`)
@@ -333,11 +338,12 @@ export function monthlyEquivalent(template)
 /**
  * Curva de dinero real a N meses.
  * @returns {{ start: number,
- *   base: { variable: number, variableMonthsUsed: number, fixedUnscheduled: number },
+ *   base: { variable: number, average: number, variableMonthsUsed: number, fixedUnscheduled: number },
  *   points: Array<{ key: string, y: number, m: number, income: number,
  *                   recurringOut: number, loanOut: number, variableOut: number,
- *                   realMoney: number }>,
- *   firstNegativeKey: string | null, minPoint: object }}
+ *                   fixedOut: number, realMoney: number }>,   // months + 1 puntos
+ *   firstNegativeKey: string | null, minPoint: object,
+ *   skippedDebts: string[], hasRecurringIncome: boolean }}
  */
 export function projectRealMoney({ transactions, initialCashBalance, cards, recurring,
   debts, debtPayments, currency, refDate, months = 12,
@@ -350,21 +356,26 @@ export function projectRealMoney({ transactions, initialCashBalance, cards, recu
 
 1. Sin recurrentes, préstamos ni historial: la curva es plana en el dinero real de hoy.
 2. Ingreso recurrente mensual 50,000 y variable base 30,000 → la curva sube 20,000 por mes completo.
-3. Apagar un recurrente de 2,000/mes sube el punto 12 en 24,000 (o el prorrateo exacto del mes en curso).
+3. Apagar un recurrente de 2,000/mes sube el último punto en 24,000, más su ocurrencia del mes en curso si cae desde hoy en adelante.
 4. Préstamo con 3 cuotas restantes → resta solo en 3 meses.
 5. «Con recortes» al 20 % con base 30,000 → resta 24,000 por mes.
 6. `getAverageMonthlySpend` ignora el mes en curso y los meses previos al primer dato, y devuelve `monthsUsed` correcto con 0, 1, 2 y 3+ meses.
 7. Cambiar interruptores no llama a ningún store ni a Supabase. Test: la función es pura y la pantalla no importa acciones de escritura.
 8. `firstNegativeKey` es el primer mes con `realMoney < 0`.
 9. UI: el selector de escenario y los interruptores funcionan con teclado. El cruce a negativo se comunica con texto. Hay i18n es/en. En 375 px no hay scroll horizontal. La animación de la curva respeta `prefers-reduced-motion`.
-10. Modo demo: la pantalla funciona con los datos sembrados.
+10. Modo demo: la pantalla funciona con los datos sembrados. El demo siembra 4 recurrentes genéricos (2 ingresos y 2 gastos fijos) porque sin ellos la pantalla solo mostraría el aviso de «sin ingresos recurrentes».
 
 ### 6.5 Riesgos
 
 - **Falsa precisión:** una curva a 12 meses parece una promesa. Mitigación: rotular «estimación», mostrar los supuestos (meses usados, intereses ignorados) y no dar decimales.
 - **Ingreso irregular:** si el ingreso no está como recurrente, la proyección cae en picada. Mitigación: aviso «No hay ingresos recurrentes; la proyección asume 0».
 - **Ingresos restringidos** (Pregunta 3) inflan la curva si están registrados como recurrente de ingreso. El interruptor de simulación sirve de parche manual.
-- **Duplicidad fijos/recurrentes:** la regla de «fijos no programados» puede contar doble si un fijo recurrente cambió de monto. Mitigación: se muestra como línea propia y se puede poner a 0.
+- **Aproximaciones del mes en curso** (conocidas, no se corrigen):
+  - El gasto ya registrado hoy está en el punto de partida (`getRealMoney`) y, además, el gasto de promedio se prorratea contando hoy completo: una parte de hoy puede contarse dos veces.
+  - Los fijos no programados se prorratean por los días que quedan aunque ya estén pagados este mes.
+  - Una plantilla con `nextDate` en el pasado pierde esa ocurrencia hasta que `materializeDue` la convierte en transacción y avanza la fecha.
+- **Primer mes parcial con un solo mes de historial:** el promedio se extrapola desde pocos días y puede ser muy ruidoso; la corrección manual existe para eso.
+- **Duplicidad fijos/recurrentes:** la regla de «fijos no programados» puede contar doble si un fijo recurrente cambió de monto. Mitigación: se muestra como línea propia y un interruptor («Incluir los fijos no programados», guardado en la simulación) la pone a 0.
 
 ---
 
